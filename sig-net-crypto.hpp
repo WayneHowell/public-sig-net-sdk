@@ -51,7 +51,7 @@ namespace SigNet {
 inline void SecureZero(void* ptr, size_t len) {
 #ifdef _WIN32
     SecureZeroMemory(ptr, len);
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
     volatile unsigned char* p = static_cast<volatile unsigned char*>(ptr); 
     while (len-- != 0U) {
         *p++ = 0U; 
