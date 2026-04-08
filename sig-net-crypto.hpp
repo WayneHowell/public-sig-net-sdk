@@ -46,10 +46,16 @@ namespace SigNet {
 //
 // Windows: SecureZeroMemory (guaranteed not to be optimised out)
 // POSIX:   explicit_bzero  (POSIX.1-2017 / glibc 2.25+)
+// Apple / BSD fallback: volatile byte loop (prevents optimisation)
 //------------------------------------------------------------------------------
 inline void SecureZero(void* ptr, size_t len) {
 #ifdef _WIN32
     SecureZeroMemory(ptr, len);
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+    volatile unsigned char* p = static_cast<volatile unsigned char*>(ptr); 
+    while (len-- != 0U) {
+        *p++ = 0U; 
+    }
 #else
     explicit_bzero(ptr, len);
 #endif
