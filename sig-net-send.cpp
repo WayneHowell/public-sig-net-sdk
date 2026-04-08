@@ -34,9 +34,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <winsock2.h>
-#endif
+// Note: No platform-specific socket headers needed in this module.
+// Multicast address formatting uses sprintf directly.
+// Network byte order encoding is handled by PacketBuffer::WriteUInt16/32.
 
 namespace SigNet {
 
@@ -57,22 +57,13 @@ int32_t CalculateMulticastAddress(
     
     // Multicast Folding Formula: Index = ((Universe - 1) % 100) + 1
     uint8_t index = static_cast<uint8_t>(((universe - 1) % 100) + 1);
-    
-    // Build IP address using proper network functions
-    struct in_addr addr;
-    addr.S_un.S_un_b.s_b1 = MULTICAST_BASE_OCTET_0;
-    addr.S_un.S_un_b.s_b2 = MULTICAST_BASE_OCTET_1;
-    addr.S_un.S_un_b.s_b3 = MULTICAST_BASE_OCTET_2;
-    addr.S_un.S_un_b.s_b4 = index;
-    
-    // Use inet_ntoa to convert to string
-    char* ip_str = inet_ntoa(addr);
-    if (ip_str) {
-        strcpy(ip_output, ip_str);
-    } else {
-        // Fallback if inet_ntoa fails
-        sprintf(ip_output, "239.254.0.%d", (int)index);
-    }
+
+    // Build IP address string
+    sprintf(ip_output, "%d.%d.%d.%d",
+        (int)MULTICAST_BASE_OCTET_0,
+        (int)MULTICAST_BASE_OCTET_1,
+        (int)MULTICAST_BASE_OCTET_2,
+        (int)index);
     
     return SIGNET_SUCCESS;
 }

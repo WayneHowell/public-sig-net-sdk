@@ -248,7 +248,9 @@ int32_t CalculateAndEncodeHMAC(
         hmac_input_len,
         options.hmac
     );
-    
+
+    SecureZero(hmac_input, sizeof(hmac_input));
+
     if (result != SIGNET_SUCCESS) {
         return result;
     }

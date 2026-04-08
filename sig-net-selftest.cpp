@@ -248,7 +248,7 @@ void TestTLVModule(TestSuiteResults& results) {
         const char* fw_ver = "v1.0.0";
         
         int32_t result = TLV::BuildStartupAnnouncePayload(
-            payload, tuid, 0x534C, 0, 0x0100BC, fw_ver, 1, 0x01, 0);
+            payload, tuid, 0x534C, 0, (uint16_t)0x0100BC, fw_ver, 1, 0x01, 0);
         
         bool passed = (result == SIGNET_SUCCESS) && (payload.GetSize() > 0);
         AddTestResult(results, "TLV: Build Announce Payload",

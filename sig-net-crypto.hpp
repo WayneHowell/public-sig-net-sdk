@@ -27,7 +27,7 @@
 // Date:         March 28, 2026
 // Description:  Cryptographic primitives: HMAC-SHA256 (RFC 2104), HKDF-Expand
 //               (RFC 5869), and key derivation for Sender, Citizen, Manager.
-//               Uses Windows BCrypt API (no external dependencies).
+//               Windows: BCrypt API. POSIX: OpenSSL.
 //==============================================================================
 
 #ifndef SIGNET_CRYPTO_HPP
@@ -36,8 +36,31 @@
 #include "sig-net-constants.hpp"
 #include "sig-net-types.hpp"
 #include <stdint.h>
+#include <string.h>
 
 namespace SigNet {
+
+//------------------------------------------------------------------------------
+// Portable secure memory wipe - prevents compiler from optimising away the
+// zeroing of buffers that contain key material or other secrets.
+//
+// Windows: SecureZeroMemory (guaranteed not to be optimised out)
+// POSIX:   explicit_bzero  (POSIX.1-2017 / glibc 2.25+)
+// Apple / BSD fallback: volatile byte loop (prevents optimisation)
+//------------------------------------------------------------------------------
+inline void SecureZero(void* ptr, size_t len) {
+#ifdef _WIN32
+    SecureZeroMemory(ptr, len);
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+    volatile unsigned char* p = static_cast<volatile unsigned char*>(ptr); 
+    while (len-- != 0U) {
+        *p++ = 0U; 
+    }
+#else
+    explicit_bzero(ptr, len);
+#endif
+}
+
 namespace Crypto {
 
 //------------------------------------------------------------------------------
