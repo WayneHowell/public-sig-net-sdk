@@ -207,6 +207,30 @@ int32_t ParseTID_LEVEL(
 );
 
 //------------------------------------------------------------------------------
+// Parse fixed-size hex byte arrays from text.
+//
+// Accepts optional leading "0x" and surrounding whitespace.
+// Expects exactly (byte_count * 2) hex digits after normalization.
+//------------------------------------------------------------------------------
+int32_t ParseHexBytes(
+    const char* text,
+    uint8_t* out_bytes,
+    uint16_t byte_count
+);
+
+// Parse 32-byte K0 hex value (64 hex chars).
+int32_t ParseK0Hex(const char* text, uint8_t out_k0[32]);
+
+// Parse 6-byte TUID hex value (12 hex chars).
+int32_t ParseTUIDHex(const char* text, uint8_t out_tuid[6]);
+
+// Parse endpoint text (decimal or prefixed hex, e.g. "65535", "0xFFFF", "$FFFF").
+int32_t ParseEndpointValue(const char* text, uint16_t& endpoint_out);
+
+// Parse 16-bit hex word with optional "0x" prefix.
+int32_t ParseHexWord(const char* text, uint16_t& value_out);
+
+//------------------------------------------------------------------------------
 // Verify Packet HMAC
 // 
 // Calculates expected HMAC and compares with received HMAC using constant-time

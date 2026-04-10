@@ -294,5 +294,99 @@ int32_t BuildURIString(
     return SIGNET_SUCCESS;
 }
 
+    bool DecodeCoapNibble(
+        const uint8_t* packet,
+        uint16_t packet_len,
+        uint16_t& pos,
+        uint8_t nibble,
+        uint16_t& value
+    ) {
+        if (!packet) {
+            return false;
+        }
+
+        if (nibble <= 12) {
+            value = nibble;
+            return true;
+        }
+
+        if (nibble == 13) {
+            if (pos >= packet_len) {
+                return false;
+            }
+            value = static_cast<uint16_t>(packet[pos++]) + 13;
+            return true;
+        }
+
+        if (nibble == 14) {
+            if (pos + 1 >= packet_len) {
+                return false;
+            }
+            uint16_t ext = (static_cast<uint16_t>(packet[pos]) << 8) |
+                           static_cast<uint16_t>(packet[pos + 1]);
+            pos += 2;
+            value = static_cast<uint16_t>(ext + 269);
+            return true;
+        }
+
+        return false;
+    }
+
+    bool FindCoapOptionAndPayload(
+        const uint8_t* packet,
+        uint16_t packet_len,
+        uint16_t target_option,
+        uint16_t& option_offset,
+        uint16_t& option_len,
+        uint16_t& payload_offset
+    ) {
+        if (!packet || packet_len < 4) {
+            return false;
+        }
+
+        uint8_t token_len = packet[0] & 0x0F;
+        uint16_t pos = static_cast<uint16_t>(4 + token_len);
+        uint16_t prev_option = 0;
+
+        option_offset = 0;
+        option_len = 0;
+        payload_offset = packet_len;
+
+        while (pos < packet_len) {
+            if (packet[pos] == COAP_PAYLOAD_MARKER) {
+                payload_offset = static_cast<uint16_t>(pos + 1);
+                return (option_len > 0);
+            }
+
+            uint8_t header = packet[pos++];
+            uint8_t delta_nibble = static_cast<uint8_t>((header >> 4) & 0x0F);
+            uint8_t len_nibble = static_cast<uint8_t>(header & 0x0F);
+            uint16_t delta = 0;
+            uint16_t length = 0;
+
+            if (!DecodeCoapNibble(packet, packet_len, pos, delta_nibble, delta)) {
+                return false;
+            }
+            if (!DecodeCoapNibble(packet, packet_len, pos, len_nibble, length)) {
+                return false;
+            }
+
+            uint16_t option_number = static_cast<uint16_t>(prev_option + delta);
+            if (pos + length > packet_len) {
+                return false;
+            }
+
+            if (option_number == target_option) {
+                option_offset = pos;
+                option_len = length;
+            }
+
+            pos = static_cast<uint16_t>(pos + length);
+            prev_option = option_number;
+        }
+
+        return (option_len > 0);
+    }
+
 } // namespace CoAP
 } // namespace SigNet

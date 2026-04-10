@@ -143,6 +143,21 @@ int32_t TUID_FromHexString(
     uint8_t* tuid                // Output: 6-byte TUID
 );
 
+// Generate an ephemeral TUID for software applications (Spec Section 6.6)
+// Combines the given manufacturer code with a CSPRNG-generated Device ID in
+// the ephemeral range 0x80000000–0xFFFFFFEF (MSB=1, reserved top 16 excluded).
+// Uses Windows BCrypt as the CSPRNG source.
+//
+// Parameters:
+//   mfg_code  - 16-bit ESTA Manufacturer ID (e.g. 0x534C for Singularity)
+//   tuid_out  - Output: 6-byte TUID (caller must provide 6 bytes)
+//
+// Returns SIGNET_SUCCESS on success, SIGNET_ERROR_CRYPTO on CSPRNG failure.
+int32_t TUID_GenerateEphemeral(
+    uint16_t mfg_code,
+    uint8_t* tuid_out
+);
+
 //------------------------------------------------------------------------------
 // Passphrase Validation (Section 7.2.3)
 // 

@@ -222,6 +222,80 @@ void TestCoAPModule(TestSuiteResults& results) {
         AddTestResult(results, "CoAP: Build URI String",
                       passed, passed ? "" : "URI string encoding failed");
     }
+
+    // Test 4: Decode inline CoAP nibble
+    {
+        uint8_t packet[1] = { 0x00 };
+        uint16_t pos = 0;
+        uint16_t value = 0;
+        bool passed = CoAP::DecodeCoapNibble(packet, sizeof(packet), pos, 12, value) &&
+                      (value == 12) &&
+                      (pos == 0);
+        AddTestResult(results, "CoAP: Decode Inline Nibble",
+                      passed, passed ? "" : "Inline nibble decode failed");
+    }
+
+    // Test 5: Decode extended 8-bit and 16-bit CoAP nibble values
+    {
+        uint8_t packet8[1] = { 0x2A };
+        uint16_t pos8 = 0;
+        uint16_t value8 = 0;
+        uint8_t packet16[2] = { 0x01, 0x23 };
+        uint16_t pos16 = 0;
+        uint16_t value16 = 0;
+
+        bool passed = CoAP::DecodeCoapNibble(packet8, sizeof(packet8), pos8, 13, value8) &&
+                      (value8 == 55) &&
+                      (pos8 == 1) &&
+                      CoAP::DecodeCoapNibble(packet16, sizeof(packet16), pos16, 14, value16) &&
+                      (value16 == 560) &&
+                      (pos16 == 2);
+        AddTestResult(results, "CoAP: Decode Extended Nibble",
+                      passed, passed ? "" : "Extended nibble decode failed");
+    }
+
+    // Test 6: Find option and payload marker in a built packet
+    {
+        PacketBuffer buffer;
+        uint8_t dmx_data[4] = { 1, 2, 3, 4 };
+        uint8_t tuid[6] = { 0x53, 0x4C, 0x00, 0x00, 0x00, 0x01 };
+        uint8_t sender_key[32];
+        memset(sender_key, 0x11, sizeof(sender_key));
+
+        int32_t result = BuildDMXPacket(
+            buffer,
+            517,
+            dmx_data,
+            4,
+            tuid,
+            1,
+            0x534C,
+            1,
+            1,
+            sender_key,
+            1
+        );
+
+        uint16_t option_offset = 0;
+        uint16_t option_len = 0;
+        uint16_t payload_offset = 0;
+        bool found = (result == SIGNET_SUCCESS) &&
+                     CoAP::FindCoapOptionAndPayload(
+                         buffer.GetBuffer(),
+                         buffer.GetSize(),
+                         SIGNET_OPTION_HMAC,
+                         option_offset,
+                         option_len,
+                         payload_offset
+                     );
+
+        bool passed = found &&
+                      (option_len == HMAC_SHA256_LENGTH) &&
+                      (payload_offset > option_offset) &&
+                      (payload_offset < buffer.GetSize());
+        AddTestResult(results, "CoAP: Find Option And Payload",
+                      passed, passed ? "" : "Could not locate HMAC option and payload");
+    }
 }
 
 //==============================================================================
@@ -314,6 +388,16 @@ void TestSendModule(TestSuiteResults& results) {
         bool passed = (seq_next == 1);  // Should wrap to 1 (not 0)
         AddTestResult(results, "Send: Sequence Rollover",
                       passed, passed ? "" : "Sequence rollover failed");
+    }
+
+    // Test 4: IPv4 token extraction from decorated NIC string
+    {
+        char token[16];
+        int32_t result = ExtractIPv4Token("Primary NIC (192.168.50.12)", token, sizeof(token));
+        bool passed = (result == SIGNET_SUCCESS) &&
+                      (strcmp(token, "192.168.50.12") == 0);
+        AddTestResult(results, "Send: Extract IPv4 Token",
+                      passed, passed ? "" : "IPv4 token extraction failed");
     }
 }
 

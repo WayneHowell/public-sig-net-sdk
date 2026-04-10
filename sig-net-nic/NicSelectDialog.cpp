@@ -11,6 +11,96 @@
 #pragma resource "*.dfm"
 TNicSelectDialog *NicSelectDialog;
 //---------------------------------------------------------------------------
+
+namespace {
+
+#ifndef IF_TYPE_IEEE80211
+#define IF_TYPE_IEEE80211 71
+#endif
+
+bool IsPhysicalAdapter(const IP_ADAPTER_INFO* adapter)
+{
+    if (!adapter) {
+        return false;
+    }
+
+    const UINT type = adapter->Type;
+    return (type == MIB_IF_TYPE_ETHERNET || type == IF_TYPE_IEEE80211);
+}
+
+bool IsUnusableIPv4(const AnsiString& ip)
+{
+    return ip.IsEmpty() || ip == "0.0.0.0" || ip == "127.0.0.1";
+}
+
+} // namespace
+
+namespace SigNet {
+
+AnsiString SelectDefaultStartupNicIP()
+{
+    AnsiString preferred_2;
+    AnsiString preferred_192;
+    AnsiString first_physical;
+
+    ULONG buf_len = sizeof(IP_ADAPTER_INFO) * 32;
+    IP_ADAPTER_INFO* adapter_buf = (IP_ADAPTER_INFO*)malloc(buf_len);
+    if (!adapter_buf) {
+        return "127.0.0.1";
+    }
+
+    DWORD ret = GetAdaptersInfo(adapter_buf, &buf_len);
+    if (ret == ERROR_BUFFER_OVERFLOW) {
+        free(adapter_buf);
+        adapter_buf = (IP_ADAPTER_INFO*)malloc(buf_len);
+        if (!adapter_buf) {
+            return "127.0.0.1";
+        }
+        ret = GetAdaptersInfo(adapter_buf, &buf_len);
+    }
+
+    if (ret == NO_ERROR) {
+        IP_ADAPTER_INFO* adapter = adapter_buf;
+        while (adapter) {
+            if (IsPhysicalAdapter(adapter)) {
+                IP_ADDR_STRING* addr = &adapter->IpAddressList;
+                while (addr) {
+                    AnsiString ip = AnsiString(addr->IpAddress.String).Trim();
+                    if (!IsUnusableIPv4(ip)) {
+                        if (first_physical.IsEmpty()) {
+                            first_physical = ip;
+                        }
+                        if (preferred_2.IsEmpty() && ip.Pos("2.") == 1) {
+                            preferred_2 = ip;
+                        }
+                        if (preferred_192.IsEmpty() && ip.Pos("192.") == 1) {
+                            preferred_192 = ip;
+                        }
+                    }
+                    addr = addr->Next;
+                }
+            }
+            adapter = adapter->Next;
+        }
+    }
+
+    free(adapter_buf);
+
+    if (!preferred_2.IsEmpty()) {
+        return preferred_2;
+    }
+    if (!preferred_192.IsEmpty()) {
+        return preferred_192;
+    }
+    if (!first_physical.IsEmpty()) {
+        return first_physical;
+    }
+    return "127.0.0.1";
+}
+
+} // namespace SigNet
+
+//---------------------------------------------------------------------------
 __fastcall TNicSelectDialog::TNicSelectDialog(TComponent* Owner)
     : TForm(Owner), FSelectedIP("127.0.0.1"), FCurrentIP("127.0.0.1")
 {

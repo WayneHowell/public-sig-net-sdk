@@ -228,6 +228,43 @@ int32_t TUID_FromHexString(const char* hex_string, uint8_t* tuid) {
     return SIGNET_SUCCESS;
 }
 
+int32_t TUID_GenerateEphemeral(uint16_t mfg_code, uint8_t* tuid_out) {
+    if (!tuid_out) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    // Generate 4 random bytes via Windows BCrypt CSPRNG
+    uint8_t rand_bytes[4];
+    NTSTATUS status = BCryptGenRandom(NULL, rand_bytes, 4, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    if (!BCRYPT_SUCCESS(status)) {
+        return SIGNET_ERROR_CRYPTO;
+    }
+
+    // Assemble as big-endian uint32_t
+    uint32_t device_id = ((uint32_t)rand_bytes[0] << 24)
+                       | ((uint32_t)rand_bytes[1] << 16)
+                       | ((uint32_t)rand_bytes[2] << 8)
+                       |  (uint32_t)rand_bytes[3];
+
+    // Force MSB=1 to place in ephemeral range (0x80000000–0xFFFFFFFF)
+    device_id |= 0x80000000u;
+
+    // Clamp away from reserved range 0xFFFFFFF0–0xFFFFFFFF
+    if (device_id >= 0xFFFFFFF0u) {
+        device_id = 0xFFFFFFEFu;
+    }
+
+    // Encode: mfg_code (2 bytes big-endian) + device_id (4 bytes big-endian)
+    tuid_out[0] = (uint8_t)(mfg_code >> 8);
+    tuid_out[1] = (uint8_t)(mfg_code & 0xFF);
+    tuid_out[2] = (uint8_t)(device_id >> 24);
+    tuid_out[3] = (uint8_t)(device_id >> 16);
+    tuid_out[4] = (uint8_t)(device_id >> 8);
+    tuid_out[5] = (uint8_t)(device_id & 0xFF);
+
+    return SIGNET_SUCCESS;
+}
+
 //------------------------------------------------------------------------------
 // Passphrase Validation Helpers (file-scope)
 //------------------------------------------------------------------------------

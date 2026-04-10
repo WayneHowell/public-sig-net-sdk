@@ -86,6 +86,7 @@ __published:	// IDE-managed Components
     void __fastcall ButtonUseTestK0Click(TObject *Sender);
     void __fastcall ButtonOKClick(TObject *Sender);
     void __fastcall FormCreate(TObject *Sender);
+    void __fastcall FormDestroy(TObject *Sender);
     
 private:	// User declarations
     uint8_t FinalK0[32];          // Derived K0 (output)
@@ -100,6 +101,7 @@ private:	// User declarations
     void UpdatePassphraseCheckEdits(const SigNet::Crypto::PassphraseChecks& checks);
     void ClearPassphraseCheckEdits();
     void DeriveAndDisplayKeys();
+    void ClearSensitiveState();
     String BytesToHex(const uint8_t* data, int length);
     
 public:		// User declarations

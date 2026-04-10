@@ -122,6 +122,23 @@ int32_t BuildURIString(
     uint32_t max_length
 );
 
+bool DecodeCoapNibble(
+    const uint8_t* packet,
+    uint16_t packet_len,
+    uint16_t& pos,
+    uint8_t nibble,
+    uint16_t& value
+);
+
+bool FindCoapOptionAndPayload(
+    const uint8_t* packet,
+    uint16_t packet_len,
+    uint16_t target_option,
+    uint16_t& option_offset,
+    uint16_t& option_len,
+    uint16_t& payload_offset
+);
+
 //------------------------------------------------------------------------------
 // Helper Functions
 //------------------------------------------------------------------------------

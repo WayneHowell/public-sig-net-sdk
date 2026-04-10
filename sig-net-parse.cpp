@@ -34,6 +34,8 @@
 #include "sig-net-parse.hpp"
 #include "sig-net-security.hpp"
 #include "sig-net-crypto.hpp"
+#include <ctype.h>
+#include <stdlib.h>
 #include <string.h>
 
 namespace SigNet {
@@ -459,6 +461,162 @@ int32_t ParseTID_LEVEL(
     slot_count = tlv.length;
     memcpy(dmx_data, tlv.value, slot_count);
     
+    return SIGNET_SUCCESS;
+}
+
+static bool IsSpaceChar(char ch)
+{
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+}
+
+static bool IsHexChar(char ch)
+{
+    return (ch >= '0' && ch <= '9') ||
+           (ch >= 'a' && ch <= 'f') ||
+           (ch >= 'A' && ch <= 'F');
+}
+
+static uint8_t HexNibble(char ch)
+{
+    if (ch >= '0' && ch <= '9') {
+        return static_cast<uint8_t>(ch - '0');
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return static_cast<uint8_t>(10 + (ch - 'a'));
+    }
+    return static_cast<uint8_t>(10 + (ch - 'A'));
+}
+
+static int32_t NormalizeToken(const char* text,
+                              char* out_token,
+                              uint16_t out_size,
+                              bool strip_0x_prefix)
+{
+    if (!text || !out_token || out_size < 2) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    const char* begin = text;
+    while (*begin && IsSpaceChar(*begin)) {
+        begin++;
+    }
+
+    const char* end = begin + strlen(begin);
+    while (end > begin && IsSpaceChar(*(end - 1))) {
+        end--;
+    }
+
+    if (end <= begin) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    if (strip_0x_prefix && (end - begin) >= 2 && begin[0] == '0' && (begin[1] == 'x' || begin[1] == 'X')) {
+        begin += 2;
+    }
+
+    size_t len = static_cast<size_t>(end - begin);
+    if (len == 0 || len >= out_size) {
+        return SIGNET_ERROR_BUFFER_TOO_SMALL;
+    }
+
+    memcpy(out_token, begin, len);
+    out_token[len] = '\0';
+    return SIGNET_SUCCESS;
+}
+
+int32_t ParseHexBytes(const char* text, uint8_t* out_bytes, uint16_t byte_count)
+{
+    if (!text || !out_bytes || byte_count == 0) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    char token[256];
+    int32_t norm = NormalizeToken(text, token, sizeof(token), true);
+    if (norm != SIGNET_SUCCESS) {
+        return norm;
+    }
+
+    size_t hex_len = strlen(token);
+    if (hex_len != (static_cast<size_t>(byte_count) * 2U)) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    for (uint16_t i = 0; i < byte_count; i++) {
+        char hi = token[i * 2U];
+        char lo = token[i * 2U + 1U];
+        if (!IsHexChar(hi) || !IsHexChar(lo)) {
+            return SIGNET_ERROR_INVALID_ARG;
+        }
+        out_bytes[i] = static_cast<uint8_t>((HexNibble(hi) << 4) | HexNibble(lo));
+    }
+
+    return SIGNET_SUCCESS;
+}
+
+int32_t ParseK0Hex(const char* text, uint8_t out_k0[32])
+{
+    return ParseHexBytes(text, out_k0, 32);
+}
+
+int32_t ParseTUIDHex(const char* text, uint8_t out_tuid[6])
+{
+    return ParseHexBytes(text, out_tuid, 6);
+}
+
+int32_t ParseEndpointValue(const char* text, uint16_t& endpoint_out)
+{
+    char token[64];
+    int32_t norm = NormalizeToken(text, token, sizeof(token), false);
+    if (norm != SIGNET_SUCCESS) {
+        return norm;
+    }
+
+    char* end_ptr = 0;
+    long parsed = 0;
+    if (token[0] == '$') {
+        parsed = strtol(token + 1, &end_ptr, 16);
+    } else {
+        parsed = strtol(token, &end_ptr, 0);
+    }
+
+    if (!end_ptr || *end_ptr != '\0') {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+    if (parsed < 0 || parsed > 65535L) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    endpoint_out = static_cast<uint16_t>(parsed);
+    return SIGNET_SUCCESS;
+}
+
+int32_t ParseHexWord(const char* text, uint16_t& value_out)
+{
+    char token[64];
+    int32_t norm = NormalizeToken(text, token, sizeof(token), false);
+    if (norm != SIGNET_SUCCESS) {
+        return norm;
+    }
+
+    char prefixed[68];
+    const char* parse_ptr = token;
+    if (!(token[0] == '0' && (token[1] == 'x' || token[1] == 'X'))) {
+        strcpy(prefixed, "0x");
+        strncat(prefixed, token, sizeof(prefixed) - 3);
+        prefixed[sizeof(prefixed) - 1] = '\0';
+        parse_ptr = prefixed;
+    }
+
+    char* end_ptr = 0;
+    long parsed = strtol(parse_ptr, &end_ptr, 0);
+    if (!end_ptr || *end_ptr != '\0') {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+    if (parsed < 0 || parsed > 65535L) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    value_out = static_cast<uint16_t>(parsed);
     return SIGNET_SUCCESS;
 }
 

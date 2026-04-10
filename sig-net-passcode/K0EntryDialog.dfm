@@ -14,6 +14,7 @@ object K0EntryDialog: TK0EntryDialog
   OldCreateOrder = True
   Position = poScreenCenter
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   PixelsPerInch = 96
   TextHeight = 13
   object LabelInstructions: TLabel

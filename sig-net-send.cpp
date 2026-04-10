@@ -106,6 +106,50 @@ int32_t GetMulticastOctets(
     return SIGNET_SUCCESS;
 }
 
+    int32_t ExtractIPv4Token(
+        const char* raw,
+        char* token_output,
+        uint32_t output_size
+    ) {
+        if (!token_output || output_size == 0) {
+            return SIGNET_ERROR_INVALID_ARG;
+        }
+
+        token_output[0] = '\0';
+        if (!raw) {
+            return SIGNET_ERROR_INVALID_ARG;
+        }
+
+        const char* cursor = raw;
+        while (*cursor != '\0') {
+            char c = *cursor;
+            if ((c >= '0' && c <= '9') || c == '.') {
+                break;
+            }
+            cursor++;
+        }
+
+        if (*cursor == '\0') {
+            return SIGNET_SUCCESS;
+        }
+
+        uint32_t out_pos = 0;
+        while (*cursor != '\0') {
+            char c = *cursor;
+            if (!((c >= '0' && c <= '9') || c == '.')) {
+                break;
+            }
+            if (out_pos + 1 >= output_size) {
+                return SIGNET_ERROR_ENCODE;
+            }
+            token_output[out_pos++] = c;
+            cursor++;
+        }
+
+        token_output[out_pos] = '\0';
+        return SIGNET_SUCCESS;
+    }
+
 //------------------------------------------------------------------------------
 // Build Common Sig-Net Options (without HMAC)
 //------------------------------------------------------------------------------
@@ -229,6 +273,63 @@ int32_t BuildNodeURIPathOptions(
         prev_option,
         reinterpret_cast<const uint8_t*>(endpoint_str),
         strlen(endpoint_str)
+    );
+}
+
+//------------------------------------------------------------------------------
+// Build Poll URI-Path Options and URI String (/sig-net/v1/poll)
+//------------------------------------------------------------------------------
+static int32_t BuildPollURIPathOptions(
+    PacketBuffer& buffer,
+    char* uri_output,
+    uint32_t uri_output_size
+) {
+    if (!uri_output || uri_output_size == 0) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    int uri_written = snprintf(
+        uri_output,
+        uri_output_size,
+        "/%s/%s/%s",
+        SIGNET_URI_PREFIX,
+        SIGNET_URI_VERSION,
+        SIGNET_URI_POLL
+    );
+    if (uri_written < 0 || static_cast<uint32_t>(uri_written) >= uri_output_size) {
+        return SIGNET_ERROR_ENCODE;
+    }
+
+    uint16_t prev_option = 0;
+    int32_t result = CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(SIGNET_URI_PREFIX),
+        strlen(SIGNET_URI_PREFIX)
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+    prev_option = COAP_OPTION_URI_PATH;
+
+    result = CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(SIGNET_URI_VERSION),
+        strlen(SIGNET_URI_VERSION)
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    return CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(SIGNET_URI_POLL),
+        strlen(SIGNET_URI_POLL)
     );
 }
 
@@ -431,6 +532,82 @@ int32_t BuildAnnouncePacket(
         payload_data,
         payload_len,
         citizen_key
+    );
+}
+
+//------------------------------------------------------------------------------
+// Build Manager Poll Packet (/sig-net/v1/poll)
+//------------------------------------------------------------------------------
+int32_t BuildPollPacket(
+    PacketBuffer& buffer,
+    const uint8_t* manager_tuid,
+    uint16_t mfg_code,
+    uint16_t product_variant_id,
+    const uint8_t* tuid_lo,
+    const uint8_t* tuid_hi,
+    uint16_t target_endpoint,
+    uint8_t query_level,
+    uint32_t session_id,
+    uint32_t seq_num,
+    const uint8_t* manager_global_key,
+    uint16_t message_id
+) {
+    if (!manager_tuid || !tuid_lo || !tuid_hi || !manager_global_key) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    if (query_level > QUERY_EXTENDED) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    buffer.Reset();
+    int32_t result = CoAP::BuildCoAPHeader(buffer, message_id);
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    char uri_string[64];
+    result = BuildPollURIPathOptions(buffer, uri_string, sizeof(uri_string));
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    SigNetOptions options;
+    result = BuildCommonSigNetOptions(
+        buffer,
+        manager_tuid,
+        0,
+        0x0000,
+        session_id,
+        seq_num,
+        &options
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    PacketBuffer payload;
+    result = TLV::BuildPollPayload(
+        payload,
+        manager_tuid,
+        mfg_code,
+        product_variant_id,
+        tuid_lo,
+        tuid_hi,
+        target_endpoint,
+        query_level
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    return FinalizePacketWithHMACAndPayload(
+        buffer,
+        uri_string,
+        options,
+        payload.GetBuffer(),
+        payload.GetSize(),
+        manager_global_key
     );
 }
 

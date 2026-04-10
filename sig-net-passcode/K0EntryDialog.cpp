@@ -35,6 +35,15 @@
 #include "K0EntryDialog.h"
 #include <stdio.h>
 #include <string.h>
+
+static void SecureZeroBuffer(void* ptr, size_t len)
+{
+    volatile unsigned char* p = static_cast<volatile unsigned char*>(ptr);
+    while (len > 0) {
+        *p++ = 0;
+        --len;
+    }
+}
 //---------------------------------------------------------------------------
 #pragma package(smart_init)
 #pragma resource "*.dfm"
@@ -58,6 +67,22 @@ void TK0EntryDialog::ClearDerivedDisplays()
     EditCitizenKey->Text = "";
     EditManagerGlobalKey->Text = "";
     EditManagerLocalKey->Text = "";
+}
+
+//---------------------------------------------------------------------------
+void TK0EntryDialog::ClearSensitiveState()
+{
+    SecureZeroBuffer(CurrentK0, sizeof(CurrentK0));
+    SecureZeroBuffer(FinalK0, sizeof(FinalK0));
+    SecureZeroBuffer(TUID, sizeof(TUID));
+    K0Valid = false;
+
+    if (EditPassphrase) { EditPassphrase->Text = ""; }
+    if (EditK0Display) { EditK0Display->Text = ""; }
+    if (EditSenderKey) { EditSenderKey->Text = ""; }
+    if (EditCitizenKey) { EditCitizenKey->Text = ""; }
+    if (EditManagerGlobalKey) { EditManagerGlobalKey->Text = ""; }
+    if (EditManagerLocalKey) { EditManagerLocalKey->Text = ""; }
 }
 
 //---------------------------------------------------------------------------
@@ -238,6 +263,12 @@ void __fastcall TK0EntryDialog::FormCreate(TObject *Sender)
 }
 
 //---------------------------------------------------------------------------
+void __fastcall TK0EntryDialog::FormDestroy(TObject *Sender)
+{
+    ClearSensitiveState();
+}
+
+//---------------------------------------------------------------------------
 void __fastcall TK0EntryDialog::RadioGroupModeClick(TObject *Sender)
 {
     UpdateEntryModeUI();
@@ -308,6 +339,7 @@ void __fastcall TK0EntryDialog::ButtonGenerateRandomPassphraseClick(TObject *Sen
         EditCheckLength->Caption = "Error generating random passphrase";
         EditCheckLength->Font->Color = clRed;
         EditCheckLength->Invalidate();
+        SecureZeroBuffer(generated_passphrase, sizeof(generated_passphrase));
         return;
     }
 
@@ -333,6 +365,8 @@ void __fastcall TK0EntryDialog::ButtonGenerateRandomPassphraseClick(TObject *Sen
         ButtonOK->Enabled = false;
         ClearDerivedDisplays();
     }
+
+    SecureZeroBuffer(generated_passphrase, sizeof(generated_passphrase));
 }
 
 //---------------------------------------------------------------------------

@@ -116,6 +116,141 @@ struct SigNetOptions {
 };
 
 //------------------------------------------------------------------------------
+// Node User Data Model (Phase 2)
+//
+// Shared storage for Root EP and EP1 TID data. Each TID uses the same blob
+// carrier and has a manager_is_stale flag that is raised when changed by UI or
+// manager traffic and cleared after proactive multicast response.
+//------------------------------------------------------------------------------
+
+enum TidBlobValueType {
+    TID_BLOB_EMPTY = 0,
+    TID_BLOB_U8,
+    TID_BLOB_U16,
+    TID_BLOB_U32,
+    TID_BLOB_TEXT,
+    TID_BLOB_BYTES
+};
+
+static const uint16_t TID_BLOB_MAX_BYTES = 512;
+
+struct TidDataBlob {
+    uint16_t tid;
+    uint16_t length;
+    uint8_t value_type;
+    bool manager_is_stale;  // Set when UI changes the value; cleared after proactive TX
+    bool ui_is_stale;       // Set when Sig-Net SET updates the value; cleared after UI sync
+    union {
+        uint8_t u8;
+        uint16_t u16;
+        uint32_t u32;
+        char text[TID_BLOB_MAX_BYTES + 1];
+        uint8_t bytes[TID_BLOB_MAX_BYTES];
+    } data;
+
+    TidDataBlob() : tid(0), length(0), value_type(TID_BLOB_EMPTY),
+                    manager_is_stale(false), ui_is_stale(false) {
+        memset(data.bytes, 0, sizeof(data.bytes));
+        data.text[0] = 0;
+    }
+};
+
+struct RootTidStore {
+    TidDataBlob tid_rt_supported_tids;
+    TidDataBlob tid_rt_endpoint_count;
+    TidDataBlob tid_rt_protocol_version;
+    TidDataBlob tid_rt_firmware_version;
+    TidDataBlob tid_rt_device_label;
+    TidDataBlob tid_rt_mult;
+    TidDataBlob tid_rt_identify;
+    TidDataBlob tid_rt_status;
+    TidDataBlob tid_rt_role_capability;
+    TidDataBlob tid_rt_reboot;
+    TidDataBlob tid_rt_model_name;
+    TidDataBlob tid_rt_unprovision;
+
+    TidDataBlob tid_nw_mac_address;
+    TidDataBlob tid_nw_ipv4_mode;
+    TidDataBlob tid_nw_ipv4_address;
+    TidDataBlob tid_nw_ipv4_netmask;
+    TidDataBlob tid_nw_ipv4_gateway;
+    TidDataBlob tid_nw_ipv4_current;
+    TidDataBlob tid_nw_ipv6_mode;
+    TidDataBlob tid_nw_ipv6_address;
+    TidDataBlob tid_nw_ipv6_prefix;
+    TidDataBlob tid_nw_ipv6_gateway;
+    TidDataBlob tid_nw_ipv6_current;
+
+    RootTidStore() {
+        tid_rt_supported_tids.tid = TID_RT_SUPPORTED_TIDS;
+        tid_rt_endpoint_count.tid = TID_RT_ENDPOINT_COUNT;
+        tid_rt_protocol_version.tid = TID_RT_PROTOCOL_VERSION;
+        tid_rt_firmware_version.tid = TID_RT_FIRMWARE_VERSION;
+        tid_rt_device_label.tid = TID_RT_DEVICE_LABEL;
+        tid_rt_mult.tid = TID_RT_MULT;
+        tid_rt_identify.tid = TID_RT_IDENTIFY;
+        tid_rt_status.tid = TID_RT_STATUS;
+        tid_rt_role_capability.tid = TID_RT_ROLE_CAPABILITY;
+        tid_rt_reboot.tid = TID_RT_REBOOT;
+        tid_rt_model_name.tid = TID_RT_MODEL_NAME;
+        tid_rt_unprovision.tid = TID_RT_UNPROVISION;
+
+        tid_nw_mac_address.tid = TID_NW_MAC_ADDRESS;
+        tid_nw_ipv4_mode.tid = TID_NW_IPV4_MODE;
+        tid_nw_ipv4_address.tid = TID_NW_IPV4_ADDRESS;
+        tid_nw_ipv4_netmask.tid = TID_NW_IPV4_NETMASK;
+        tid_nw_ipv4_gateway.tid = TID_NW_IPV4_GATEWAY;
+        tid_nw_ipv4_current.tid = TID_NW_IPV4_CURRENT;
+        tid_nw_ipv6_mode.tid = TID_NW_IPV6_MODE;
+        tid_nw_ipv6_address.tid = TID_NW_IPV6_ADDRESS;
+        tid_nw_ipv6_prefix.tid = TID_NW_IPV6_PREFIX;
+        tid_nw_ipv6_gateway.tid = TID_NW_IPV6_GATEWAY;
+        tid_nw_ipv6_current.tid = TID_NW_IPV6_CURRENT;
+    }
+};
+
+struct EP1TidStore {
+    TidDataBlob tid_ep_universe;
+    TidDataBlob tid_ep_label;
+    TidDataBlob tid_ep_mult_override;
+    TidDataBlob tid_ep_capability;
+    TidDataBlob tid_ep_direction;
+    TidDataBlob tid_ep_input_priority;
+    TidDataBlob tid_ep_status;
+    TidDataBlob tid_ep_failover;
+    TidDataBlob tid_ep_dmx_timing;
+    TidDataBlob tid_ep_refresh_capability;
+    TidDataBlob tid_rdm_tod_background;  // TID_RDM_TOD_BACKGROUND (0x0305) – 1 byte
+
+    TidDataBlob tid_level;
+    TidDataBlob tid_priority;
+    TidDataBlob tid_sync;
+
+    EP1TidStore() {
+        tid_ep_universe.tid = TID_EP_UNIVERSE;
+        tid_ep_label.tid = TID_EP_LABEL;
+        tid_ep_mult_override.tid = TID_EP_MULT_OVERRIDE;
+        tid_ep_capability.tid = TID_EP_CAPABILITY;
+        tid_ep_direction.tid = TID_EP_DIRECTION;
+        tid_ep_input_priority.tid = TID_EP_INPUT_PRIORITY;
+        tid_ep_status.tid = TID_EP_STATUS;
+        tid_ep_failover.tid = TID_EP_FAILOVER;
+        tid_ep_dmx_timing.tid = TID_EP_DMX_TIMING;
+        tid_ep_refresh_capability.tid = TID_EP_REFRESH_CAPABILITY;
+        tid_rdm_tod_background.tid = TID_RDM_TOD_BACKGROUND;
+
+        tid_level.tid = TID_LEVEL;
+        tid_priority.tid = TID_PRIORITY;
+        tid_sync.tid = TID_SYNC;
+    }
+};
+
+struct NodeUserData {
+    RootTidStore root;
+    EP1TidStore ep1;
+};
+
+//------------------------------------------------------------------------------
 // Packet Buffer Class
 // 
 // Manages a static 1400-byte buffer for constructing SigNet packets.

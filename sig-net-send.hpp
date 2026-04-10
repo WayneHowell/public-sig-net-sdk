@@ -79,6 +79,12 @@ int32_t GetMulticastOctets(
     uint8_t* octet3
 );
 
+int32_t ExtractIPv4Token(
+    const char* raw,
+    char* token_output,
+    uint32_t output_size
+);
+
 //------------------------------------------------------------------------------
 // Packet Building
 //------------------------------------------------------------------------------
@@ -173,6 +179,23 @@ int32_t BuildAnnouncePacket(
     uint32_t session_id,
     uint32_t seq_num,
     const uint8_t* citizen_key,
+    uint16_t message_id
+);
+
+// Build manager poll packet (/sig-net/v1/poll) containing a TID_POLL TLV,
+// signed with Km_global.
+int32_t BuildPollPacket(
+    PacketBuffer& buffer,
+    const uint8_t* manager_tuid,
+    uint16_t mfg_code,
+    uint16_t product_variant_id,
+    const uint8_t* tuid_lo,
+    const uint8_t* tuid_hi,
+    uint16_t target_endpoint,
+    uint8_t query_level,
+    uint32_t session_id,
+    uint32_t seq_num,
+    const uint8_t* manager_global_key,
     uint16_t message_id
 );
 
