@@ -52,7 +52,7 @@
 TFormSigNetNode *FormSigNetNode;
 
 #define APP_VERSION_MAJOR 0
-#define APP_VERSION_MINOR 4
+#define APP_VERSION_MINOR 5
 #define APP_VERSION_ID ((APP_VERSION_MAJOR << 8) | APP_VERSION_MINOR)
 
 static void SecureZeroBuffer(void* ptr, size_t len)
@@ -231,6 +231,13 @@ void __fastcall TFormSigNetNode::FormCreate(TObject *Sender)
     EditNicIP->Text = String(selected_nic_ip.c_str());
     EditNicIP->ReadOnly = true;
 
+    EditScope->Text = String(SigNet::CoAP::GetURIScope());
+    ApplyScopeFromUI();
+
+    EditRootDeviceLabel->MaxLength = 64;
+    EditRootModelName->MaxLength = 64;
+    EditEP1Label->MaxLength = 64;
+
     // Announce / on-boot packet fields
     EditAnnounceVersionNum->Text = IntToStr(APP_VERSION_ID);
     EditAnnounceVersionString->Text = "v0.15-test";
@@ -286,8 +293,9 @@ void __fastcall TFormSigNetNode::FormCreate(TObject *Sender)
     EditRootProtVersion->ReadOnly = true;
     EditRootFirmwareID->Text = IntToStr(APP_VERSION_ID);
     EditRootFirmwareID->ReadOnly = true;
-    EditRootFirmwareStr->Text = "v0.15-test";
-    EditRootFirmwareStr->ReadOnly = true;
+	EditRootFirmwareStr->Text = "v0.16 Spec";
+	EditRootFirmwareStr->ReadOnly = true;
+	EditAnnounceVersionString->Text=EditRootFirmwareStr->Text;
     EditRootModelName->Text = "Fogmaster 5000";
     EditRootModelName->OnExit = GenericEditExit;
     EditRootModelName->OnKeyPress = GenericEditKeyPress;
@@ -545,7 +553,7 @@ void __fastcall TFormSigNetNode::FormDestroy(TObject *Sender)
 
 void __fastcall TFormSigNetNode::ButtonSelectK0Click(TObject *Sender)
 {
-    if (!ParseTUIDFromHex(EditTUID->Text)) {
+    if (!this->ParseTUIDFromHex(EditTUID->Text.Trim())) {
         LogError("Invalid TUID - cannot open K0 dialog");
         return;
     }
@@ -1108,7 +1116,7 @@ void TFormSigNetNode::CommitControlFromUI(TObject* sender, const String& trigger
 
     if (sender == ComboEP1Failover || sender == SpinEP1FailoverScene) {
         UpdateFailoverSceneVisibility();
-        uint8_t mode = (uint8_t)(ComboEP1Failover->ItemIndex & 0x03);
+        uint8_t mode = (uint8_t)(ComboEP1Failover->ItemIndex & 0x07);
         uint16_t scene = (mode == 0x03) ? (uint16_t)SpinEP1FailoverScene->Value : 0;
         uint8_t failover[3] = {mode, (uint8_t)(scene >> 8), (uint8_t)(scene & 0xFF)};
 
@@ -1296,6 +1304,10 @@ bool TFormSigNetNode::SendRawPacket(const uint8_t* packet, uint16_t packet_len, 
 
 bool TFormSigNetNode::SendAnnouncePacket()
 {
+    if (!ApplyScopeFromUI()) {
+        return false;
+    }
+
     if (!keys_valid) {
         LogError("Cannot send announce - Kc not available. Click Select K0 first.");
         error_count++;
@@ -1545,6 +1557,7 @@ SigNet::TidDataBlob* TFormSigNetNode::FindTidBlob(uint16_t tid)
         case SigNet::TID_RT_ROLE_CAPABILITY: return &node_user_data.root.tid_rt_role_capability;
         case SigNet::TID_RT_REBOOT: return &node_user_data.root.tid_rt_reboot;
         case SigNet::TID_RT_MODEL_NAME: return &node_user_data.root.tid_rt_model_name;
+        case SigNet::TID_RT_SCOPE: return &node_user_data.root.tid_rt_scope;
         case SigNet::TID_RT_UNPROVISION: return &node_user_data.root.tid_rt_unprovision;
         case SigNet::TID_NW_MAC_ADDRESS: return &node_user_data.root.tid_nw_mac_address;
         case SigNet::TID_NW_IPV4_MODE: return &node_user_data.root.tid_nw_ipv4_mode;
@@ -1557,6 +1570,8 @@ SigNet::TidDataBlob* TFormSigNetNode::FindTidBlob(uint16_t tid)
         case SigNet::TID_NW_IPV6_PREFIX: return &node_user_data.root.tid_nw_ipv6_prefix;
         case SigNet::TID_NW_IPV6_GATEWAY: return &node_user_data.root.tid_nw_ipv6_gateway;
         case SigNet::TID_NW_IPV6_CURRENT: return &node_user_data.root.tid_nw_ipv6_current;
+        case SigNet::TID_DG_SECURITY_EVENT: return &node_user_data.root.tid_dg_security_event;
+        case SigNet::TID_DG_MESSAGE: return &node_user_data.root.tid_dg_message;
 
         case SigNet::TID_EP_UNIVERSE: return &node_user_data.ep1.tid_ep_universe;
         case SigNet::TID_EP_LABEL: return &node_user_data.ep1.tid_ep_label;
@@ -1568,6 +1583,9 @@ SigNet::TidDataBlob* TFormSigNetNode::FindTidBlob(uint16_t tid)
         case SigNet::TID_EP_FAILOVER: return &node_user_data.ep1.tid_ep_failover;
         case SigNet::TID_EP_DMX_TIMING: return &node_user_data.ep1.tid_ep_dmx_timing;
         case SigNet::TID_EP_REFRESH_CAPABILITY: return &node_user_data.ep1.tid_ep_refresh_capability;
+        case SigNet::TID_RDM_TOD_DATA: return &node_user_data.ep1.tid_rdm_tod_data;
+        case SigNet::TID_RDM_FLOW_CONTROL: return &node_user_data.ep1.tid_rdm_flow_control;
+        case SigNet::TID_DG_LEVEL_FOLDBACK: return &node_user_data.ep1.tid_dg_level_foldback;
         case SigNet::TID_LEVEL: return &node_user_data.ep1.tid_level;
         case SigNet::TID_PRIORITY: return &node_user_data.ep1.tid_priority;
         case SigNet::TID_SYNC: return &node_user_data.ep1.tid_sync;
@@ -1622,6 +1640,7 @@ void TFormSigNetNode::ClearAllManagerStaleFlags()
     node_user_data.root.tid_rt_role_capability.manager_is_stale = false;
     node_user_data.root.tid_rt_reboot.manager_is_stale = false;
     node_user_data.root.tid_rt_model_name.manager_is_stale = false;
+    node_user_data.root.tid_rt_scope.manager_is_stale = false;
     node_user_data.root.tid_rt_unprovision.manager_is_stale = false;
     node_user_data.root.tid_nw_mac_address.manager_is_stale = false;
     node_user_data.root.tid_nw_ipv4_mode.manager_is_stale = false;
@@ -1634,6 +1653,8 @@ void TFormSigNetNode::ClearAllManagerStaleFlags()
     node_user_data.root.tid_nw_ipv6_prefix.manager_is_stale = false;
     node_user_data.root.tid_nw_ipv6_gateway.manager_is_stale = false;
     node_user_data.root.tid_nw_ipv6_current.manager_is_stale = false;
+    node_user_data.root.tid_dg_security_event.manager_is_stale = false;
+    node_user_data.root.tid_dg_message.manager_is_stale = false;
 
     node_user_data.ep1.tid_ep_universe.manager_is_stale = false;
     node_user_data.ep1.tid_ep_label.manager_is_stale = false;
@@ -1645,7 +1666,10 @@ void TFormSigNetNode::ClearAllManagerStaleFlags()
     node_user_data.ep1.tid_ep_failover.manager_is_stale = false;
     node_user_data.ep1.tid_ep_dmx_timing.manager_is_stale = false;
     node_user_data.ep1.tid_ep_refresh_capability.manager_is_stale = false;
+    node_user_data.ep1.tid_rdm_tod_data.manager_is_stale = false;
     node_user_data.ep1.tid_rdm_tod_background.manager_is_stale = false;
+    node_user_data.ep1.tid_rdm_flow_control.manager_is_stale = false;
+    node_user_data.ep1.tid_dg_level_foldback.manager_is_stale = false;
     node_user_data.ep1.tid_level.manager_is_stale = false;
     node_user_data.ep1.tid_priority.manager_is_stale = false;
     node_user_data.ep1.tid_sync.manager_is_stale = false;
@@ -1745,10 +1769,26 @@ void TFormSigNetNode::InitializeNodeUserDataFromUI()
     // --- Root EP: MODEL_NAME (SoemCode prefix stripped here – store just the name) ---
     {
         AnsiString model_name = AnsiString(EditRootModelName->Text);
+        if (model_name.Length() > 64) {
+            model_name = model_name.SubString(1, 64);
+        }
         StoreBlobFromBytes(node_user_data.root.tid_rt_model_name,
                            SigNet::TID_RT_MODEL_NAME,
                            (const uint8_t*)model_name.c_str(),
                            (uint16_t)model_name.Length(),
+                           SigNet::TID_BLOB_TEXT);
+    }
+
+    // --- Root EP: SCOPE ---
+    {
+        AnsiString scope_text = AnsiString(EditScope->Text.Trim());
+        if (scope_text.IsEmpty()) {
+            scope_text = SigNet::SIGNET_URI_SCOPE_DEFAULT;
+        }
+        StoreBlobFromBytes(node_user_data.root.tid_rt_scope,
+                           SigNet::TID_RT_SCOPE,
+                           (const uint8_t*)scope_text.c_str(),
+                           (uint16_t)scope_text.Length(),
                            SigNet::TID_BLOB_TEXT);
     }
 
@@ -1894,7 +1934,7 @@ void TFormSigNetNode::InitializeNodeUserDataFromUI()
 
     // --- EP1: FAILOVER (mode + scene high + scene low = 3 bytes) ---
     {
-        uint8_t mode = (uint8_t)(ComboEP1Failover->ItemIndex & 0x03);
+        uint8_t mode = (uint8_t)(ComboEP1Failover->ItemIndex & 0x07);
         uint16_t scene = (mode == 0x03) ? (uint16_t)SpinEP1FailoverScene->Value : 0;
         uint8_t failover[3] = {mode, (uint8_t)(scene >> 8), (uint8_t)(scene & 0xFF)};
         StoreBlobFromBytes(node_user_data.ep1.tid_ep_failover,
@@ -1935,6 +1975,20 @@ void TFormSigNetNode::InitializeNodeUserDataFromUI()
         uint8_t rdm_bg[1] = {(uint8_t)(CBEp1RdmEnable->Checked ? 1 : 0)};
         StoreBlobFromBytes(node_user_data.ep1.tid_rdm_tod_background,
                            SigNet::TID_RDM_TOD_BACKGROUND, rdm_bg, 1, SigNet::TID_BLOB_U8);
+    }
+
+    // --- EP1: RDM_FLOW_CONTROL ---
+    {
+        uint8_t rdm_fifo[2] = { 0x00, 0x00 };
+        StoreBlobFromBytes(node_user_data.ep1.tid_rdm_flow_control,
+                           SigNet::TID_RDM_FLOW_CONTROL, rdm_fifo, 2, SigNet::TID_BLOB_BYTES);
+    }
+
+    // --- EP1: RDM_TOD_DATA ---
+    {
+        uint8_t tod_data[2] = { 0x01, 0x01 };  // packet 1 of 1, empty UID array
+        StoreBlobFromBytes(node_user_data.ep1.tid_rdm_tod_data,
+                           SigNet::TID_RDM_TOD_DATA, tod_data, 2, SigNet::TID_BLOB_BYTES);
     }
 
     ClearAllManagerStaleFlags();
@@ -2013,8 +2067,35 @@ void TFormSigNetNode::HandleSetRequest(uint16_t tid, const uint8_t* value, uint1
         return;
     }
 
+    if ((tid == SigNet::TID_RT_DEVICE_LABEL || tid == SigNet::TID_EP_LABEL || tid == SigNet::TID_RT_MODEL_NAME) &&
+        length > 64) {
+        LogError(String().sprintf(L"SET rejected for TID 0x%04X: length %u exceeds 64", tid, length));
+        return;
+    }
+
+    if (tid == SigNet::TID_RT_SCOPE) {
+        if (length < 1 || length > SigNet::SIGNET_URI_SCOPE_MAX_LENGTH || !value) {
+            LogError("SET rejected for TID_RT_SCOPE: invalid length");
+            return;
+        }
+
+        char scope[SigNet::SIGNET_URI_SCOPE_MAX_LENGTH + 1];
+        memcpy(scope, value, length);
+        scope[length] = 0;
+
+        int32_t rc = SigNet::CoAP::SetURIScope(scope);
+        if (rc != SigNet::SIGNET_SUCCESS) {
+            LogError(String().sprintf(L"SET rejected for TID_RT_SCOPE: invalid value (error %d)", rc));
+            return;
+        }
+    }
+
     uint8_t blob_type = SigNet::TID_BLOB_BYTES;
-    if (tid == SigNet::TID_RT_DEVICE_LABEL || tid == SigNet::TID_EP_LABEL) {
+    if (tid == SigNet::TID_RT_DEVICE_LABEL ||
+        tid == SigNet::TID_EP_LABEL ||
+        tid == SigNet::TID_RT_MODEL_NAME ||
+        tid == SigNet::TID_RT_SCOPE ||
+        tid == SigNet::TID_DG_MESSAGE) {
         blob_type = SigNet::TID_BLOB_TEXT;
     }
 
@@ -2097,6 +2178,10 @@ int32_t TFormSigNetNode::BuildQueryLevelPayload(uint8_t query_level, uint16_t re
 
 bool TFormSigNetNode::SendPollReplyWithQueryLevel(uint8_t query_level, uint16_t reply_endpoint, const String& reason)
 {
+    if (!ApplyScopeFromUI()) {
+        return false;
+    }
+
     if (!keys_valid) {
         LogError("Cannot send poll reply: keys not available");
         return false;
@@ -2204,6 +2289,10 @@ bool TFormSigNetNode::SendPollReplyWithQueryLevel(uint8_t query_level, uint16_t 
 
 bool TFormSigNetNode::SendStaleResponseForEndpoint(uint16_t reply_endpoint, const String& reason)
 {
+    if (!ApplyScopeFromUI()) {
+        return false;
+    }
+
     if (!keys_valid) {
         LogError("Cannot send stale response: keys not available");
         return false;
@@ -2234,6 +2323,7 @@ bool TFormSigNetNode::SendStaleResponseForEndpoint(uint16_t reply_endpoint, cons
         &node_user_data.root.tid_rt_role_capability,
         &node_user_data.root.tid_rt_reboot,
         &node_user_data.root.tid_rt_model_name,
+        &node_user_data.root.tid_rt_scope,
         &node_user_data.root.tid_rt_unprovision,
         &node_user_data.root.tid_nw_mac_address,
         &node_user_data.root.tid_nw_ipv4_mode,
@@ -2245,7 +2335,9 @@ bool TFormSigNetNode::SendStaleResponseForEndpoint(uint16_t reply_endpoint, cons
         &node_user_data.root.tid_nw_ipv6_address,
         &node_user_data.root.tid_nw_ipv6_prefix,
         &node_user_data.root.tid_nw_ipv6_gateway,
-        &node_user_data.root.tid_nw_ipv6_current
+        &node_user_data.root.tid_nw_ipv6_current,
+        &node_user_data.root.tid_dg_security_event,
+        &node_user_data.root.tid_dg_message
     };
     SigNet::TidDataBlob* ep1_blobs[] = {
         &node_user_data.ep1.tid_ep_universe,
@@ -2258,7 +2350,10 @@ bool TFormSigNetNode::SendStaleResponseForEndpoint(uint16_t reply_endpoint, cons
         &node_user_data.ep1.tid_ep_failover,
         &node_user_data.ep1.tid_ep_dmx_timing,
         &node_user_data.ep1.tid_ep_refresh_capability,
+        &node_user_data.ep1.tid_rdm_tod_data,
         &node_user_data.ep1.tid_rdm_tod_background,
+        &node_user_data.ep1.tid_rdm_flow_control,
+        &node_user_data.ep1.tid_dg_level_foldback,
         &node_user_data.ep1.tid_level,
         &node_user_data.ep1.tid_priority,
         &node_user_data.ep1.tid_sync
@@ -2486,6 +2581,11 @@ void TFormSigNetNode::ProcessIncomingPacket(const uint8_t* packet, uint16_t pack
 {
     rx_packet_counter++;
 
+    if (!ApplyScopeFromUI()) {
+        rx_reject_counter++;
+        return;
+    }
+
     char src_ip[32];
     src_ip[0] = 0;
     strncpy(src_ip, inet_ntoa(source_addr.sin_addr), sizeof(src_ip) - 1);
@@ -2537,13 +2637,6 @@ void TFormSigNetNode::ProcessIncomingPacket(const uint8_t* packet, uint16_t pack
     if (!SigNet::Node::ExtractPayload(packet, packet_len, coap_header, options, uri, sizeof(uri), payload, payload_len)) {
         rx_reject_counter++;
         LogError("RX reject: parse failure extracting URI/options/payload");
-        return;
-    }
-
-
-    if (strstr(uri, "/sig-net/v1/") != uri) {
-        rx_reject_counter++;
-        LogError("RX reject: URI prefix must be /sig-net/v1/");
         return;
     }
 
@@ -2624,6 +2717,11 @@ void TFormSigNetNode::ProcessIncomingPacket(const uint8_t* packet, uint16_t pack
                                        level_data,
                                        slot_count,
                                        SigNet::TID_BLOB_BYTES);
+                    StoreBlobFromBytes(node_user_data.ep1.tid_dg_level_foldback,
+                                       SigNet::TID_DG_LEVEL_FOLDBACK,
+                                       level_data,
+                                       slot_count,
+                                       SigNet::TID_BLOB_BYTES);
                     node_user_data.ep1.tid_level.ui_is_stale = true;
                 }
                 break;
@@ -2688,6 +2786,7 @@ void TFormSigNetNode::ClearAllUIStaleFlags()
     node_user_data.root.tid_rt_role_capability.ui_is_stale = false;
     node_user_data.root.tid_rt_reboot.ui_is_stale = false;
     node_user_data.root.tid_rt_model_name.ui_is_stale = false;
+    node_user_data.root.tid_rt_scope.ui_is_stale = false;
     node_user_data.root.tid_rt_unprovision.ui_is_stale = false;
     node_user_data.root.tid_nw_mac_address.ui_is_stale = false;
     node_user_data.root.tid_nw_ipv4_mode.ui_is_stale = false;
@@ -2700,6 +2799,8 @@ void TFormSigNetNode::ClearAllUIStaleFlags()
     node_user_data.root.tid_nw_ipv6_prefix.ui_is_stale = false;
     node_user_data.root.tid_nw_ipv6_gateway.ui_is_stale = false;
     node_user_data.root.tid_nw_ipv6_current.ui_is_stale = false;
+    node_user_data.root.tid_dg_security_event.ui_is_stale = false;
+    node_user_data.root.tid_dg_message.ui_is_stale = false;
 
     node_user_data.ep1.tid_ep_universe.ui_is_stale = false;
     node_user_data.ep1.tid_ep_label.ui_is_stale = false;
@@ -2711,7 +2812,10 @@ void TFormSigNetNode::ClearAllUIStaleFlags()
     node_user_data.ep1.tid_ep_failover.ui_is_stale = false;
     node_user_data.ep1.tid_ep_dmx_timing.ui_is_stale = false;
     node_user_data.ep1.tid_ep_refresh_capability.ui_is_stale = false;
+    node_user_data.ep1.tid_rdm_tod_data.ui_is_stale = false;
     node_user_data.ep1.tid_rdm_tod_background.ui_is_stale = false;
+    node_user_data.ep1.tid_rdm_flow_control.ui_is_stale = false;
+    node_user_data.ep1.tid_dg_level_foldback.ui_is_stale = false;
     node_user_data.ep1.tid_level.ui_is_stale = false;
     node_user_data.ep1.tid_priority.ui_is_stale = false;
     node_user_data.ep1.tid_sync.ui_is_stale = false;
@@ -2739,6 +2843,13 @@ void TFormSigNetNode::SyncUIFromStaleBlobs()
             ComboRootIdentify->ItemIndex = idx;
         }
         node_user_data.root.tid_rt_identify.ui_is_stale = false;
+    }
+
+    if (node_user_data.root.tid_rt_scope.ui_is_stale) {
+        if (node_user_data.root.tid_rt_scope.length > 0) {
+            EditScope->Text = String((const char*)node_user_data.root.tid_rt_scope.data.text);
+        }
+        node_user_data.root.tid_rt_scope.ui_is_stale = false;
     }
 
     if (node_user_data.ep1.tid_ep_universe.ui_is_stale) {
@@ -2769,7 +2880,7 @@ void TFormSigNetNode::SyncUIFromStaleBlobs()
 
     if (node_user_data.ep1.tid_ep_failover.ui_is_stale) {
         if (node_user_data.ep1.tid_ep_failover.length >= 3) {
-            int mode = node_user_data.ep1.tid_ep_failover.data.bytes[0] & 0x03;
+            int mode = node_user_data.ep1.tid_ep_failover.data.bytes[0] & 0x07;
             ComboEP1Failover->ItemIndex = mode;
             if (mode == 3) {
                 uint16_t scene = ((uint16_t)node_user_data.ep1.tid_ep_failover.data.bytes[1] << 8) |
@@ -2824,6 +2935,7 @@ void TFormSigNetNode::SendStaleTIDsToManager()
         &node_user_data.root.tid_rt_role_capability,
         &node_user_data.root.tid_rt_reboot,
         &node_user_data.root.tid_rt_model_name,
+        &node_user_data.root.tid_rt_scope,
         &node_user_data.root.tid_rt_unprovision,
         &node_user_data.root.tid_nw_mac_address,
         &node_user_data.root.tid_nw_ipv4_mode,
@@ -2835,7 +2947,9 @@ void TFormSigNetNode::SendStaleTIDsToManager()
         &node_user_data.root.tid_nw_ipv6_address,
         &node_user_data.root.tid_nw_ipv6_prefix,
         &node_user_data.root.tid_nw_ipv6_gateway,
-        &node_user_data.root.tid_nw_ipv6_current
+        &node_user_data.root.tid_nw_ipv6_current,
+        &node_user_data.root.tid_dg_security_event,
+        &node_user_data.root.tid_dg_message
     };
     SigNet::TidDataBlob* ep1_blobs[] = {
         &node_user_data.ep1.tid_ep_universe,
@@ -2848,7 +2962,10 @@ void TFormSigNetNode::SendStaleTIDsToManager()
         &node_user_data.ep1.tid_ep_failover,
         &node_user_data.ep1.tid_ep_dmx_timing,
         &node_user_data.ep1.tid_ep_refresh_capability,
+        &node_user_data.ep1.tid_rdm_tod_data,
         &node_user_data.ep1.tid_rdm_tod_background,
+        &node_user_data.ep1.tid_rdm_flow_control,
+        &node_user_data.ep1.tid_dg_level_foldback,
         &node_user_data.ep1.tid_level,
         &node_user_data.ep1.tid_priority,
         &node_user_data.ep1.tid_sync
@@ -2911,6 +3028,35 @@ void TFormSigNetNode::LogMessage(const String& msg)
 void TFormSigNetNode::LogError(const String& msg)
 {
     LogMessage("ERROR: " + msg);
+}
+//---------------------------------------------------------------------------
+
+bool TFormSigNetNode::ApplyScopeFromUI()
+{
+    AnsiString scope = AnsiString(EditScope->Text.Trim());
+    if (scope.IsEmpty() || scope.Length() > SigNet::SIGNET_URI_SCOPE_MAX_LENGTH) {
+        LogError("Scope must be 1-32 UTF characters");
+        return false;
+    }
+    if (scope.Pos("/") > 0) {
+        LogError("Scope cannot contain '/'");
+        return false;
+    }
+
+    int32_t rc = SigNet::CoAP::SetURIScope(scope.c_str());
+    if (rc != SigNet::SIGNET_SUCCESS) {
+        LogError(String().sprintf(L"Invalid scope value (error %d)", rc));
+        return false;
+    }
+
+    EditScope->Text = String(scope.c_str());
+    return true;
+}
+//---------------------------------------------------------------------------
+
+void __fastcall TFormSigNetNode::EditScopeChange(TObject *Sender)
+{
+    ApplyScopeFromUI();
 }
 //---------------------------------------------------------------------------
 

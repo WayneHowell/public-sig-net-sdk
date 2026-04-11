@@ -46,19 +46,26 @@ object FormSigNetTx: TFormSigNetTx
         Height = 13
         Caption = 'IP:'
       end
+      object LabelScope: TLabel
+        Left = 592
+        Top = 24
+        Width = 33
+        Height = 13
+        Caption = 'Scope:'
+      end
       object ButtonSelectK0: TButton
         Left = 106
         Top = 19
         Width = 105
         Height = 25
-        Caption = 'Select K0...'
+        Caption = 'Provision'
         TabOrder = 3
         OnClick = ButtonSelectK0Click
       end
       object EditNicIP: TEdit
         Left = 360
         Top = 21
-        Width = 200
+        Width = 89
         Height = 22
         Font.Charset = DEFAULT_CHARSET
         Font.Color = clWindowText
@@ -71,9 +78,9 @@ object FormSigNetTx: TFormSigNetTx
         Text = '127.0.0.1'
       end
       object ButtonSelectNic: TButton
-        Left = 568
+        Left = 462
         Top = 19
-        Width = 100
+        Width = 115
         Height = 25
         Caption = 'Select NIC...'
         TabOrder = 1
@@ -96,6 +103,16 @@ object FormSigNetTx: TFormSigNetTx
         Caption = 'Self-Test'
         TabOrder = 2
         OnClick = ButtonSelfTestClick
+      end
+      object EditScope: TEdit
+        Left = 631
+        Top = 21
+        Width = 147
+        Height = 21
+        MaxLength = 32
+        TabOrder = 5
+        Text = 'local'
+        OnChange = EditScopeChange
       end
     end
     object GroupBoxAnnounce: TGroupBox
@@ -147,7 +164,7 @@ object FormSigNetTx: TFormSigNetTx
         Width = 250
         Height = 21
         TabOrder = 1
-        Text = 'v0.12-test'
+        Text = '??'
       end
       object EditAnnounceMfgCode: TEdit
         Left = 142

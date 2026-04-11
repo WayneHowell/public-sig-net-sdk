@@ -42,6 +42,53 @@
 namespace SigNet {
 namespace CoAP {
 
+static char g_uri_scope[SIGNET_URI_SCOPE_MAX_LENGTH + 1] = "";
+
+static bool IsScopeCharUnreserved(unsigned char c)
+{
+    if (c >= 'A' && c <= 'Z') return true;
+    if (c >= 'a' && c <= 'z') return true;
+    if (c >= '0' && c <= '9') return true;
+    return (c == '-') || (c == '.') || (c == '_') || (c == '~');
+}
+
+int32_t SetURIScope(const char* scope)
+{
+    if (!scope) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    size_t len = strlen(scope);
+    if (len < 1 || len > SIGNET_URI_SCOPE_MAX_LENGTH) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    size_t i;
+    for (i = 0; i < len; ++i) {
+        const unsigned char c = static_cast<unsigned char>(scope[i]);
+        if (!IsScopeCharUnreserved(c)) {
+            return SIGNET_ERROR_INVALID_ARG;
+        }
+    }
+
+    memcpy(g_uri_scope, scope, len);
+    g_uri_scope[len] = '\0';
+    return SIGNET_SUCCESS;
+}
+
+const char* GetURIScope()
+{
+    if (g_uri_scope[0] == '\0') {
+        size_t def_len = strlen(SIGNET_URI_SCOPE_DEFAULT);
+        if (def_len > SIGNET_URI_SCOPE_MAX_LENGTH) {
+            def_len = SIGNET_URI_SCOPE_MAX_LENGTH;
+        }
+        memcpy(g_uri_scope, SIGNET_URI_SCOPE_DEFAULT, def_len);
+        g_uri_scope[def_len] = '\0';
+    }
+    return g_uri_scope;
+}
+
 //------------------------------------------------------------------------------
 // Build CoAP Header
 //------------------------------------------------------------------------------
@@ -185,12 +232,13 @@ int32_t EncodeCoAPOption(
 //------------------------------------------------------------------------------
 // Build URI-Path Options for Sig-Net
 // 
-// Constructs: /sig-net/v1/level/{universe}
-// As 4 separate Uri-Path options (Option 11):
+// Constructs: /sig-net/v1/{scope}/level/{universe}
+// As 5 separate Uri-Path options (Option 11):
 //   1. "sig-net"
 //   2. "v1"
-//   3. "level"
-//   4. "{universe}" (as ASCII decimal string)
+//   3. "{scope}"
+//   4. "level"
+//   5. "{universe}" (as ASCII decimal string)
 //------------------------------------------------------------------------------
 int32_t BuildURIPathOptions(
     PacketBuffer& buffer,
@@ -229,7 +277,19 @@ int32_t BuildURIPathOptions(
     }
     // prev_option remains COAP_OPTION_URI_PATH (delta = 0)
     
-    // Option 3: "level"
+    // Option 3: scope
+    result = EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(GetURIScope()),
+        strlen(GetURIScope())
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    // Option 4: "level"
     result = EncodeCoAPOption(
         buffer,
         COAP_OPTION_URI_PATH,
@@ -242,7 +302,7 @@ int32_t BuildURIPathOptions(
     }
     // prev_option remains COAP_OPTION_URI_PATH
     
-    // Option 4: universe number as ASCII decimal string
+    // Option 5: universe number as ASCII decimal string
     char universe_str[UNIVERSE_DECIMAL_BUFFER_SIZE];
     snprintf(universe_str, sizeof(universe_str), "%u", universe);
     
@@ -260,7 +320,7 @@ int32_t BuildURIPathOptions(
 //------------------------------------------------------------------------------
 // Build URI String for HMAC Calculation
 // 
-// Returns: "/sig-net/v1/level/{universe}"
+// Returns: "/sig-net/v1/{scope}/level/{universe}"
 // This is used as part of the HMAC input per Section 8.5
 //------------------------------------------------------------------------------
 int32_t BuildURIString(
@@ -276,13 +336,14 @@ int32_t BuildURIString(
         return SIGNET_ERROR_INVALID_ARG;
     }
     
-    // Build URI string: "/sig-net/v1/level/{universe}"
+    // Build URI string: "/sig-net/v1/{scope}/level/{universe}"
     int written = snprintf(
         uri_output,
         max_length,
-        "/%s/%s/%s/%u",
+        "/%s/%s/%s/%s/%u",
         SIGNET_URI_PREFIX,
         SIGNET_URI_VERSION,
+        GetURIScope(),
         SIGNET_URI_LEVEL,
         universe
     );

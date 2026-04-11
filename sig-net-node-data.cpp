@@ -28,6 +28,7 @@
 #include "sig-net-tid-strings.hpp"
 #include "sig-net-tlv.hpp"
 #include "sig-net-constants.hpp"
+#include "sig-net-coap.hpp"
 #include <string.h>
 
 namespace SigNet {
@@ -182,9 +183,10 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
     }
 
     // ==========================================================================
-    // QUERY_CONFIG tier (cumulative): DEVICE_LABEL, IDENTIFY, STATUS,
-    //   RDM_TOD_BACKGROUND, EP_UNIVERSE, EP_LABEL, EP_MULT_OVERRIDE,
-    //   EP_DIRECTION, EP_INPUT_PRIORITY, EP_STATUS, EP_FAILOVER
+    // QUERY_CONFIG tier (cumulative): DEVICE_LABEL, IDENTIFY, STATUS, RT_SCOPE,
+    //   RDM_TOD_BACKGROUND, RDM_FLOW_CONTROL, EP_UNIVERSE, EP_LABEL,
+    //   EP_MULT_OVERRIDE, EP_DIRECTION, EP_INPUT_PRIORITY, EP_STATUS,
+    //   EP_FAILOVER, EP_DMX_TIMING
     // ==========================================================================
 
     if (IsTidAllowedForEndpoint(TID_RT_DEVICE_LABEL, is_root_ep, is_data_ep)) {
@@ -212,6 +214,17 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
         result = AppendBlobOrDefault(payload_out, TID_RT_STATUS,
                                      data.root.tid_rt_status,
                                      default_status, 4);
+        if (result != SIGNET_SUCCESS) {
+            return result;
+        }
+    }
+
+    if (IsTidAllowedForEndpoint(TID_RT_SCOPE, is_root_ep, is_data_ep)) {
+        const char* scope = CoAP::GetURIScope();
+        result = AppendBlobOrDefault(payload_out, TID_RT_SCOPE,
+                                     data.root.tid_rt_scope,
+                                     reinterpret_cast<const uint8_t*>(scope),
+                                     static_cast<uint16_t>(strlen(scope)));
         if (result != SIGNET_SUCCESS) {
             return result;
         }
@@ -292,6 +305,16 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
         result = AppendBlobOrDefault(payload_out, TID_EP_FAILOVER,
                                      data.ep1.tid_ep_failover,
                                      default_failover, 3);
+        if (result != SIGNET_SUCCESS) {
+            return result;
+        }
+    }
+
+    if (IsTidAllowedForEndpoint(TID_EP_DMX_TIMING, is_root_ep, is_data_ep)) {
+        uint8_t default_dmx_timing[2] = { 0x00, 0x00 };
+        result = AppendBlobOrDefault(payload_out, TID_EP_DMX_TIMING,
+                                     data.ep1.tid_ep_dmx_timing,
+                                     default_dmx_timing, 2);
         if (result != SIGNET_SUCCESS) {
             return result;
         }
@@ -499,7 +522,44 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
         }
     }
 
-    // QUERY_EXTENDED: security TIDs (treated same as FULL until spec is finalised)
+    if (query_level < QUERY_EXTENDED) {
+        return SIGNET_SUCCESS;
+    }
+
+    // ======================================================================
+    // QUERY_EXTENDED tier (cumulative): DG_SECURITY_EVENT, DG_MESSAGE,
+    //   RDM_FLOW_CONTROL
+    // ======================================================================
+
+    if (IsTidAllowedForEndpoint(TID_DG_SECURITY_EVENT, is_root_ep, is_data_ep)) {
+        uint8_t default_event[11] = { 0 };
+        default_event[6] = SECURITY_ADDR_IPV4;
+        result = AppendBlobOrDefault(payload_out, TID_DG_SECURITY_EVENT,
+                                     data.root.tid_dg_security_event,
+                                     default_event, 11);
+        if (result != SIGNET_SUCCESS) {
+            return result;
+        }
+    }
+
+    if (IsTidAllowedForEndpoint(TID_DG_MESSAGE, is_root_ep, is_data_ep)) {
+        result = AppendNodeTLVRaw(payload_out, TID_DG_MESSAGE,
+                                  data.root.tid_dg_message.data.bytes,
+                                  data.root.tid_dg_message.length);
+        if (result != SIGNET_SUCCESS) {
+            return result;
+        }
+    }
+
+    if (IsTidAllowedForEndpoint(TID_RDM_FLOW_CONTROL, is_root_ep, is_data_ep)) {
+        uint8_t default_rdm_fifo[2] = { 0x00, 0x00 };
+        result = AppendBlobOrDefault(payload_out, TID_RDM_FLOW_CONTROL,
+                                     data.ep1.tid_rdm_flow_control,
+                                     default_rdm_fifo, 2);
+        if (result != SIGNET_SUCCESS) {
+            return result;
+        }
+    }
 
     return SIGNET_SUCCESS;
 }

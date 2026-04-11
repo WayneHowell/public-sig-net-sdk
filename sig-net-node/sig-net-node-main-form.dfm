@@ -76,7 +76,7 @@ object FormSigNetNode: TFormSigNetNode
         Top = 16
         Width = 120
         Height = 25
-        Caption = 'Select K0...'
+        Caption = 'Provision'
         TabOrder = 2
         OnClick = ButtonSelectK0Click
       end
@@ -88,6 +88,23 @@ object FormSigNetNode: TFormSigNetNode
         Caption = 'Self-Test'
         TabOrder = 3
         OnClick = ButtonSelfTestClick
+      end
+      object LabelScope: TLabel
+        Left = 640
+        Top = 22
+        Width = 38
+        Height = 13
+        Caption = 'Scope:'
+      end
+      object EditScope: TEdit
+        Left = 684
+        Top = 19
+        Width = 180
+        Height = 22
+        MaxLength = 32
+        TabOrder = 5
+        Text = 'local'
+        OnChange = EditScopeChange
       end
     end
     object GroupBoxAnnounce: TGroupBox
@@ -139,7 +156,7 @@ object FormSigNetNode: TFormSigNetNode
         Width = 250
         Height = 21
         TabOrder = 1
-        Text = 'v0.15-test'
+        Text = '??'
       end
       object EditAnnounceMfgCode: TEdit
         Left = 142

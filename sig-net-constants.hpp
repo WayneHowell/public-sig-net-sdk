@@ -110,8 +110,9 @@ static const uint16_t TID_TIMECODE              = 0x0202;  // MIDI-style timecod
 static const uint16_t TID_RDM_COMMAND           = 0x0301;  // Encapsulated E1.20 RDM request from Manager (26-257 bytes)
 static const uint16_t TID_RDM_RESPONSE          = 0x0302;  // Encapsulated E1.20 RDM response from Node (26-257 bytes)
 static const uint16_t TID_RDM_TOD_CONTROL       = 0x0303;  // TOD control: force discovery or flush (1 byte)
-static const uint16_t TID_RDM_TOD_DATA          = 0x0304;  // Array of discovered RDM UIDs (multiples of 6 bytes)
+static const uint16_t TID_RDM_TOD_DATA          = 0x0304;  // RDM ToD block with packet index/total + UID array (2+N bytes)
 static const uint16_t TID_RDM_TOD_BACKGROUND    = 0x0305;  // Enable/disable background RDM discovery (0/1 byte)
+static const uint16_t TID_RDM_FLOW_CONTROL      = 0x0306;  // RDM FIFO capacity/availability report (0/2 bytes)
 
 // Section 11.4 - Provisioning Type Identifiers (Root Endpoint only)
 static const uint16_t TID_RT_UNPROVISION        = 0x0401;  // Wipe keys and return to unprovisioned state (4 bytes, magic 0x57495045)
@@ -141,7 +142,8 @@ static const uint16_t TID_RT_IDENTIFY           = 0x0607;  // Identify state: 0x
 static const uint16_t TID_RT_STATUS             = 0x0608;  // Device health bitfield: Bit0=HW Fault, Bit1=Factory, Bit2=Locked (0/4 bytes)
 static const uint16_t TID_RT_ROLE_CAPABILITY    = 0x0609;  // Role bitfield: Bit0=Node, Bit1=Sender, Bit2=Manager (0/1 byte)
 static const uint16_t TID_RT_REBOOT             = 0x060A;  // Reboot command with BOOT magic (5 bytes)
-static const uint16_t TID_RT_MODEL_NAME         = 0x060B;  // SoemCode + model name string (0/5-68 bytes)
+static const uint16_t TID_RT_MODEL_NAME         = 0x060B;  // Product model UTF-8 string, max 64 bytes (0/1-64 bytes)
+static const uint16_t TID_RT_SCOPE              = 0x060C;  // Operational URI scope UTF-8 string, max 32 bytes (0/1-32 bytes)
 
 // Section 11.7 - Data Endpoint Type Identifiers (Data Endpoints 1-N only)
 static const uint16_t TID_EP_UNIVERSE           = 0x0901;  // Assigned universe 1-63999, 0=unset (0/2 bytes)
@@ -157,7 +159,7 @@ static const uint16_t TID_EP_DMX_TIMING         = 0x0909;  // Endpoint DMX trans
 static const uint16_t TID_EP_REFRESH_CAPABILITY = 0x090A;  // Endpoint max refresh capability in Hz (0/1 byte)
 
 // Section 11.8 - Diagnostic Type Identifiers
-static const uint16_t TID_DG_SECURITY_EVENT     = 0xFF01;  // Security event report: EventCode+Counter+SourceIP (0/18 bytes)
+static const uint16_t TID_DG_SECURITY_EVENT     = 0xFF01;  // Security event report: EventCode+Counter+SourceIP (0/11-23 bytes)
 static const uint16_t TID_DG_MESSAGE            = 0xFF02;  // Human-readable diagnostic message, UTF-8, not null-terminated (0-64 bytes)
 static const uint16_t TID_DG_LEVEL_FOLDBACK     = 0xFF03;  // Copy of level buffer for the specified universe (0/1-512 bytes)
 
@@ -193,7 +195,7 @@ static const uint16_t MAX_UNIVERSE          = 63999; // Maximum valid universe n
 static const uint16_t MAX_UDP_PAYLOAD       = 1400;  // Maximum single UDP packet size (bytes)
 static const uint16_t COAP_HEADER_SIZE      = 4;     // CoAP header is always 4 bytes
 static const uint16_t UNIVERSE_DECIMAL_BUFFER_SIZE = 8; // "63999" + null
-static const uint16_t URI_STRING_MIN_BUFFER = 32;       // "/sig-net/v1/level/63999" + margin
+static const uint16_t URI_STRING_MIN_BUFFER = 96;       // URI path buffer with scoped paths
 
 //------------------------------------------------------------------------------
 // Transmission Timing (Section 10.6.2)
@@ -223,6 +225,8 @@ static const uint8_t  HKDF_COUNTER_T1       = 0x01;  // HKDF counter for first b
 
 static const char* SIGNET_URI_PREFIX    = "sig-net";
 static const char* SIGNET_URI_VERSION   = "v1";
+static const char* SIGNET_URI_SCOPE_DEFAULT = "local";
+static const uint8_t SIGNET_URI_SCOPE_MAX_LENGTH = 32;
 static const char* SIGNET_URI_LEVEL     = "level";     // For TID_LEVEL messages
 static const char* SIGNET_URI_PRIORITY  = "priority";  // For TID_PRIORITY messages
 static const char* SIGNET_URI_SYNC      = "sync";      // For TID_SYNC messages
@@ -230,8 +234,8 @@ static const char* SIGNET_URI_NODE      = "node";      // For /node/{tuid}/{endp
 static const char* SIGNET_URI_POLL      = "poll";      // For /poll discovery messages
 
 // Fixed administrative multicast addresses (Appendix A)
-static const char* MULTICAST_NODE_SEND_IP = "239.254.255.253";  // /sig-net/<version>/node/{tuid}/{endpoint}
-static const char* MULTICAST_MANAGER_POLL_IP = "239.254.255.252";  // /sig-net/<version>/poll
+static const char* MULTICAST_NODE_SEND_IP = "239.254.255.253";  // /sig-net/<version>/<scope>/node/{tuid}/{endpoint}
+static const char* MULTICAST_MANAGER_POLL_IP = "239.254.255.252";  // /sig-net/<version>/<scope>/poll
 static const char* MULTICAST_MANAGER_SEND_IP = "239.254.255.251";  // manager/{tuid}/{endpoint} -- manager commands to node
 static const char* MULTICAST_TIME_IP         = "239.254.255.250";  // sync + timecode/{stream} -- time distribution
 static const char* MULTICAST_NODE_BEACON_IP  = "239.254.255.255";  // node_beacon/{tuid} -- unprovisioned node beacon
@@ -417,7 +421,8 @@ enum RebootType {
 enum EpDirection {
 	EP_DIR_DISABLED  = 0x00,  // Port disabled
 	EP_DIR_CONSUMER  = 0x01,  // Consumer: receives Sig-Net, outputs physical DMX
-	EP_DIR_SUPPLIER  = 0x02   // Supplier: receives physical DMX, transmits Sig-Net
+	EP_DIR_SUPPLIER  = 0x02,  // Supplier: receives physical DMX, transmits Sig-Net
+	EP_DIR_FALLBACK  = 0x03   // Fallback: monitor input, fall back to consumer output on loss
 };
 
 // TID_EP_FAILOVER mode byte values (Section 11.7.8)
@@ -425,7 +430,8 @@ enum FailoverMode {
 	FAILOVER_HOLD_LAST  = 0x00,  // Hold last received state (default)
 	FAILOVER_BLACKOUT   = 0x01,  // All slots to 0 (blackout)
 	FAILOVER_FULL       = 0x02,  // All slots to 255 (full)
-	FAILOVER_PLAY_SCENE = 0x03   // Execute internal preset or scene
+	FAILOVER_PLAY_SCENE = 0x03,  // Execute internal preset or scene
+	FAILOVER_STOP_DMX   = 0x04   // Stop generating DMX frames
 };
 
 // TID_EP_DMX_TIMING transmission mode byte values (Section 11.7.9)

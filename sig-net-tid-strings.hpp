@@ -72,7 +72,7 @@ inline uint8_t GetIdentifyStateValue(int index)
 // FailoverMode  (TID_EP_FAILOVER  0x0908)
 //------------------------------------------------------------------------------
 
-static const int FAILOVER_MODE_COUNT = 4;
+static const int FAILOVER_MODE_COUNT = 5;
 
 inline const char* GetFailoverModeLabel(FailoverMode mode)
 {
@@ -81,20 +81,21 @@ inline const char* GetFailoverModeLabel(FailoverMode mode)
         case FAILOVER_BLACKOUT:   return "0x01 - Blackout (all slots 0)";
         case FAILOVER_FULL:       return "0x02 - Full (all slots 255)";
         case FAILOVER_PLAY_SCENE: return "0x03 - Play Scene";
+        case FAILOVER_STOP_DMX:   return "0x04 - Stop generating DMX";
         default:                  return "";
     }
 }
 
 inline uint8_t GetFailoverModeValue(int index)
 {
-    return static_cast<uint8_t>(index & 0x03);
+    return static_cast<uint8_t>(index & 0x07);
 }
 
 //------------------------------------------------------------------------------
 // EpDirection  (TID_EP_DIRECTION  0x0905)
 //------------------------------------------------------------------------------
 
-static const int EP_DIRECTION_COUNT = 3;
+static const int EP_DIRECTION_COUNT = 4;
 
 inline const char* GetEpDirectionLabel(EpDirection direction)
 {
@@ -102,6 +103,7 @@ inline const char* GetEpDirectionLabel(EpDirection direction)
         case EP_DIR_DISABLED: return "0x00 - Disabled";
         case EP_DIR_CONSUMER: return "0x01 - Consumer (receives Sig-Net, consumes internally)";
         case EP_DIR_SUPPLIER: return "0x02 - Supplier (generates Sig-Net)";
+        case EP_DIR_FALLBACK: return "0x03 - Fallback (monitor input, auto-consume on signal loss)";
         default:              return "";
     }
 }
@@ -259,7 +261,7 @@ struct SupportedTidEntry {
     bool        supports_get;
 };
 
-static const int SUPPORTED_TID_COUNT = 36;
+static const int SUPPORTED_TID_COUNT = 46;
 
 inline const SupportedTidEntry* GetSupportedTidTable()
 {
@@ -268,11 +270,12 @@ inline const SupportedTidEntry* GetSupportedTidTable()
         { TID_RT_PROTOCOL_VERSION, "TID_RT_PROTOCOL_VERSION (0x0603) - mandated",true,  true,  false, false, true  },
         { TID_RT_FIRMWARE_VERSION, "TID_RT_FIRMWARE_VERSION (0x0604) - mandated",true,  true,  false, false, true  },
         { TID_RT_DEVICE_LABEL,     "TID_RT_DEVICE_LABEL (0x0605) - mandated",    true,  true,  false, false, true  },
-        { TID_RT_MULT,             "TID_RT_MULT (0x0606) - mandated",            true,  true,  false, false, true  },
+        { TID_RT_MULT,             "TID_RT_MULT_OVERRIDE (0x0606) - mandated",    true,  true,  false, false, true  },
         { TID_RT_IDENTIFY,         "TID_RT_IDENTIFY (0x0607) - mandated",        true,  true,  false, false, true  },
         { TID_RT_STATUS,           "TID_RT_STATUS (0x0608) - mandated",          true,  true,  false, false, true  },
         { TID_RT_ROLE_CAPABILITY,  "TID_RT_ROLE_CAPABILITY (0x0609) - mandated", true,  true,  false, false, true  },
-        { TID_RT_MODEL_NAME,       "TID_RT_MODEL_NAME (0x060B) - optional",      true,  true,  false, false, true  },
+        { TID_RT_MODEL_NAME,       "TID_RT_MODEL_NAME (0x060B) - mandated",      true,  true,  false, false, true  },
+        { TID_RT_SCOPE,            "TID_RT_SCOPE (0x060C) - mandated",           true,  true,  false, false, true  },
         { TID_RT_REBOOT,           "TID_RT_REBOOT (0x060A) - optional",          false, true,  false, true,  false },
         { TID_RT_UNPROVISION,      "TID_RT_UNPROVISION (0x0401) - optional",     false, true,  false, true,  false },
         { TID_NW_MAC_ADDRESS,      "TID_NW_MAC_ADDRESS (0x0501) - optional",     false, true,  false, false, true  },
@@ -286,6 +289,8 @@ inline const SupportedTidEntry* GetSupportedTidTable()
         { TID_NW_IPV6_PREFIX,      "TID_NW_IPV6_PREFIX (0x0583) - optional",     false, true,  false, false, true  },
         { TID_NW_IPV6_GATEWAY,     "TID_NW_IPV6_GATEWAY (0x0584) - optional",    false, true,  false, false, true  },
         { TID_NW_IPV6_CURRENT,     "TID_NW_IPV6_CURRENT (0x0585) - optional",    false, true,  false, false, true  },
+        { TID_DG_SECURITY_EVENT,   "TID_DG_SECURITY_EVENT (0xFF01) - diagnostics",true,true, false,false, true  },
+        { TID_DG_MESSAGE,          "TID_DG_MESSAGE (0xFF02) - diagnostics",      false, true,  false, false, true  },
 
         { TID_EP_UNIVERSE,         "TID_EP_UNIVERSE (0x0901) - data endpoint",   true,  false, true,  false, true  },
         { TID_EP_LABEL,            "TID_EP_LABEL (0x0902) - data endpoint",      true,  false, true,  false, true  },
@@ -298,10 +303,17 @@ inline const SupportedTidEntry* GetSupportedTidTable()
         { TID_EP_DMX_TIMING,       "TID_EP_DMX_TIMING (0x0909) - data endpoint", false, false, true,  false, true  },
         { TID_EP_REFRESH_CAPABILITY,"TID_EP_REFRESH_CAPABILITY (0x090A) - data endpoint",false,false,true,false, true  },
         { TID_RDM_TOD_BACKGROUND,  "TID_RDM_TOD_BACKGROUND (0x0305) - data endpoint",false,false,true,false, true  },
+        { TID_RDM_FLOW_CONTROL,    "TID_RDM_FLOW_CONTROL (0x0306) - data endpoint",false,false,true,false, true  },
+        { TID_RDM_TOD_DATA,        "TID_RDM_TOD_DATA (0x0304) - query only",     false, false, true,  false, true  },
+        { TID_RDM_COMMAND,         "TID_RDM_COMMAND (0x0301) - RDM command",      false, true,  true,  true,  false },
+        { TID_RDM_RESPONSE,        "TID_RDM_RESPONSE (0x0302) - RDM response",    false, true,  true,  false, false },
+        { TID_RDM_TOD_CONTROL,     "TID_RDM_TOD_CONTROL (0x0303) - TOD control",  false, false, true,  true,  false },
+        { TID_DG_LEVEL_FOLDBACK,   "TID_DG_LEVEL_FOLDBACK (0xFF03) - query only",false,false,true,false, true  },
 
-        { TID_LEVEL,               "TID_LEVEL (0x0001) - data stream",           false, false, true,  false, false },
-        { TID_PRIORITY,            "TID_PRIORITY (0x0002) - data stream",        false, false, true,  false, false },
-        { TID_SYNC,                "TID_SYNC (0x0003) - data stream",            false, false, true,  false, false }
+        { TID_LEVEL,               "TID_LEVEL (0x0101) - data stream",           false, false, true,  false, false },
+        { TID_PRIORITY,            "TID_PRIORITY (0x0102) - data stream",        false, false, true,  false, false },
+        { TID_SYNC,                "TID_SYNC (0x0201) - data stream",            false, false, true,  false, false },
+        { TID_TIMECODE,            "TID_TIMECODE (0x0202) - data stream",        false, false, true,  false, false }
     };
     return k_table;
 }
@@ -365,9 +377,13 @@ inline bool IsTidAllowedForEndpoint(uint16_t tid, bool is_root_ep, bool is_data_
         case TID_EP_DMX_TIMING:
         case TID_EP_REFRESH_CAPABILITY:
         case TID_RDM_TOD_BACKGROUND:
+        case TID_RDM_FLOW_CONTROL:
+        case TID_RDM_TOD_DATA:
+        case TID_DG_LEVEL_FOLDBACK:
         case TID_LEVEL:
         case TID_PRIORITY:
         case TID_SYNC:
+        case TID_TIMECODE:
             return is_data_ep;
         default:
             return false;

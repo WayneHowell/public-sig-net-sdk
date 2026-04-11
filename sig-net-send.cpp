@@ -184,7 +184,7 @@ int32_t BuildCommonSigNetOptions(
 }
 
 //------------------------------------------------------------------------------
-// Build Node URI-Path Options and URI String (/sig-net/v1/node/{tuid}/{endpoint})
+// Build Node URI-Path Options and URI String (/sig-net/v1/{scope}/node/{tuid}/{endpoint})
 //------------------------------------------------------------------------------
 int32_t BuildNodeURIPathOptions(
     PacketBuffer& buffer,
@@ -210,9 +210,10 @@ int32_t BuildNodeURIPathOptions(
     int uri_written = snprintf(
         uri_output,
         uri_output_size,
-        "/%s/%s/%s/%s/%s",
+        "/%s/%s/%s/%s/%s/%s",
         SIGNET_URI_PREFIX,
         SIGNET_URI_VERSION,
+        CoAP::GetURIScope(),
         SIGNET_URI_NODE,
         tuid_hex,
         endpoint_str
@@ -240,6 +241,17 @@ int32_t BuildNodeURIPathOptions(
         prev_option,
         reinterpret_cast<const uint8_t*>(SIGNET_URI_VERSION),
         strlen(SIGNET_URI_VERSION)
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    result = CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(CoAP::GetURIScope()),
+        strlen(CoAP::GetURIScope())
     );
     if (result != SIGNET_SUCCESS) {
         return result;
@@ -277,7 +289,7 @@ int32_t BuildNodeURIPathOptions(
 }
 
 //------------------------------------------------------------------------------
-// Build Poll URI-Path Options and URI String (/sig-net/v1/poll)
+// Build Poll URI-Path Options and URI String (/sig-net/v1/{scope}/poll)
 //------------------------------------------------------------------------------
 static int32_t BuildPollURIPathOptions(
     PacketBuffer& buffer,
@@ -291,9 +303,10 @@ static int32_t BuildPollURIPathOptions(
     int uri_written = snprintf(
         uri_output,
         uri_output_size,
-        "/%s/%s/%s",
+        "/%s/%s/%s/%s",
         SIGNET_URI_PREFIX,
         SIGNET_URI_VERSION,
+        CoAP::GetURIScope(),
         SIGNET_URI_POLL
     );
     if (uri_written < 0 || static_cast<uint32_t>(uri_written) >= uri_output_size) {
@@ -319,6 +332,17 @@ static int32_t BuildPollURIPathOptions(
         prev_option,
         reinterpret_cast<const uint8_t*>(SIGNET_URI_VERSION),
         strlen(SIGNET_URI_VERSION)
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    result = CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(CoAP::GetURIScope()),
+        strlen(CoAP::GetURIScope())
     );
     if (result != SIGNET_SUCCESS) {
         return result;
@@ -485,7 +509,7 @@ int32_t BuildAnnouncePacket(
         return result;
     }
 
-    char uri_string[64];
+    char uri_string[URI_STRING_MIN_BUFFER];
     result = BuildNodeURIPathOptions(buffer, tuid, 0, uri_string, sizeof(uri_string));
     if (result != SIGNET_SUCCESS) {
         return result;
@@ -536,7 +560,7 @@ int32_t BuildAnnouncePacket(
 }
 
 //------------------------------------------------------------------------------
-// Build Manager Poll Packet (/sig-net/v1/poll)
+// Build Manager Poll Packet (/sig-net/v1/{scope}/poll)
 //------------------------------------------------------------------------------
 int32_t BuildPollPacket(
     PacketBuffer& buffer,
@@ -566,7 +590,7 @@ int32_t BuildPollPacket(
         return result;
     }
 
-    char uri_string[64];
+    char uri_string[URI_STRING_MIN_BUFFER];
     result = BuildPollURIPathOptions(buffer, uri_string, sizeof(uri_string));
     if (result != SIGNET_SUCCESS) {
         return result;

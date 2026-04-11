@@ -50,7 +50,7 @@
 TFormSigNetTx *FormSigNetTx;
 
 #define APP_VERSION_MAJOR 0
-#define APP_VERSION_MINOR 4
+#define APP_VERSION_MINOR 5
 #define APP_VERSION_ID ((APP_VERSION_MAJOR << 8) | APP_VERSION_MINOR)
 
 static void SetLabelsTransparentRecursive(TWinControl* root)
@@ -244,8 +244,11 @@ void __fastcall TFormSigNetTx::FormCreate(TObject *Sender)
     }
     EditNicIP->ReadOnly = true;
 
+    EditScope->Text = String(SigNet::CoAP::GetURIScope());
+    ApplyScopeFromUI();
+
     EditAnnounceVersionNum->Text = IntToStr(APP_VERSION_ID);
-	EditAnnounceVersionString->Text = "v0.15-test";
+	EditAnnounceVersionString->Text = "v0.16 Spec";
     EditAnnounceMfgCode->Text = String().sprintf(L"0x%04x", (unsigned int)((SigNet::SoemCodeSdkLevelTx >> 16) & 0xFFFF));
     EditAnnounceProductVariant->Text = String().sprintf(L"0x%04x", (unsigned int)(SigNet::SoemCodeSdkLevelTx & 0xFFFF));
     
@@ -313,7 +316,7 @@ void __fastcall TFormSigNetTx::FormCreate(TObject *Sender)
     WarnIfLoopbackSelected();
     
     LogMessage("Sig-Net Test Application initialized.");
-    LogMessage("Click 'Select K0...' to configure the root key.");
+	LogMessage("Click 'Provision' to configure the root key.");
     LogMessage("Announce packets are manual: use the Announce button.");
 }
 //---------------------------------------------------------------------------
@@ -518,6 +521,10 @@ void __fastcall TFormSigNetTx::ButtonDeprovisionClick(TObject *Sender)
 // Send a SigNet packet
 bool TFormSigNetTx::SendPacket()
 {
+    if (!ApplyScopeFromUI()) {
+        return false;
+    }
+
     if (!keys_valid) {
         LogError("Cannot send - keys not derived. Click Select K0 and complete key setup.");
         error_count++;
@@ -732,6 +739,10 @@ bool TFormSigNetTx::SendPacket()
 
 bool TFormSigNetTx::SendAnnouncePacket()
 {
+    if (!ApplyScopeFromUI()) {
+        return false;
+    }
+
     if (!keys_valid) {
         LogError("Cannot send announce - Kc not available. Click Select K0 first.");
         error_count++;
@@ -982,6 +993,35 @@ void TFormSigNetTx::LogMessage(const String& msg)
 void TFormSigNetTx::LogError(const String& msg)
 {
     LogMessage("ERROR: " + msg);
+}
+//---------------------------------------------------------------------------
+
+bool TFormSigNetTx::ApplyScopeFromUI()
+{
+    AnsiString scope = AnsiString(EditScope->Text.Trim());
+    if (scope.IsEmpty() || scope.Length() > SigNet::SIGNET_URI_SCOPE_MAX_LENGTH) {
+        LogError("Scope must be 1-32 UTF characters");
+        return false;
+    }
+    if (scope.Pos("/") > 0) {
+        LogError("Scope cannot contain '/'");
+        return false;
+    }
+
+    int32_t rc = SigNet::CoAP::SetURIScope(scope.c_str());
+    if (rc != SigNet::SIGNET_SUCCESS) {
+        LogError(String().sprintf(L"Invalid scope value (error %d)", rc));
+        return false;
+    }
+
+    EditScope->Text = String(scope.c_str());
+    return true;
+}
+//---------------------------------------------------------------------------
+
+void __fastcall TFormSigNetTx::EditScopeChange(TObject *Sender)
+{
+    ApplyScopeFromUI();
 }
 //---------------------------------------------------------------------------
 

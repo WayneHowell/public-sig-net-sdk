@@ -167,6 +167,7 @@ struct RootTidStore {
     TidDataBlob tid_rt_role_capability;
     TidDataBlob tid_rt_reboot;
     TidDataBlob tid_rt_model_name;
+    TidDataBlob tid_rt_scope;
     TidDataBlob tid_rt_unprovision;
 
     TidDataBlob tid_nw_mac_address;
@@ -181,6 +182,9 @@ struct RootTidStore {
     TidDataBlob tid_nw_ipv6_gateway;
     TidDataBlob tid_nw_ipv6_current;
 
+    TidDataBlob tid_dg_security_event;
+    TidDataBlob tid_dg_message;
+
     RootTidStore() {
         tid_rt_supported_tids.tid = TID_RT_SUPPORTED_TIDS;
         tid_rt_endpoint_count.tid = TID_RT_ENDPOINT_COUNT;
@@ -193,6 +197,7 @@ struct RootTidStore {
         tid_rt_role_capability.tid = TID_RT_ROLE_CAPABILITY;
         tid_rt_reboot.tid = TID_RT_REBOOT;
         tid_rt_model_name.tid = TID_RT_MODEL_NAME;
+        tid_rt_scope.tid = TID_RT_SCOPE;
         tid_rt_unprovision.tid = TID_RT_UNPROVISION;
 
         tid_nw_mac_address.tid = TID_NW_MAC_ADDRESS;
@@ -206,6 +211,9 @@ struct RootTidStore {
         tid_nw_ipv6_prefix.tid = TID_NW_IPV6_PREFIX;
         tid_nw_ipv6_gateway.tid = TID_NW_IPV6_GATEWAY;
         tid_nw_ipv6_current.tid = TID_NW_IPV6_CURRENT;
+
+        tid_dg_security_event.tid = TID_DG_SECURITY_EVENT;
+        tid_dg_message.tid = TID_DG_MESSAGE;
     }
 };
 
@@ -221,6 +229,9 @@ struct EP1TidStore {
     TidDataBlob tid_ep_dmx_timing;
     TidDataBlob tid_ep_refresh_capability;
     TidDataBlob tid_rdm_tod_background;  // TID_RDM_TOD_BACKGROUND (0x0305) – 1 byte
+    TidDataBlob tid_rdm_flow_control;    // TID_RDM_FLOW_CONTROL (0x0306) – 2 bytes
+    TidDataBlob tid_rdm_tod_data;        // TID_RDM_TOD_DATA (0x0304) – [index,total,UIDs...]
+    TidDataBlob tid_dg_level_foldback;   // TID_DG_LEVEL_FOLDBACK (0xFF03) – 1..512 bytes
 
     TidDataBlob tid_level;
     TidDataBlob tid_priority;
@@ -238,6 +249,9 @@ struct EP1TidStore {
         tid_ep_dmx_timing.tid = TID_EP_DMX_TIMING;
         tid_ep_refresh_capability.tid = TID_EP_REFRESH_CAPABILITY;
         tid_rdm_tod_background.tid = TID_RDM_TOD_BACKGROUND;
+        tid_rdm_flow_control.tid = TID_RDM_FLOW_CONTROL;
+        tid_rdm_tod_data.tid = TID_RDM_TOD_DATA;
+        tid_dg_level_foldback.tid = TID_DG_LEVEL_FOLDBACK;
 
         tid_level.tid = TID_LEVEL;
         tid_priority.tid = TID_PRIORITY;

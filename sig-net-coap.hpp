@@ -40,6 +40,13 @@
 namespace SigNet {
 namespace CoAP {
 
+// Configure URI scope segment used by packet builders.
+// Scope must be 1-32 bytes, UTF-compatible bytes without '/'.
+int32_t SetURIScope(const char* scope);
+
+// Get current URI scope segment (default: "local").
+const char* GetURIScope();
+
 //------------------------------------------------------------------------------
 // CoAP Header Building
 //------------------------------------------------------------------------------
@@ -86,15 +93,16 @@ int32_t EncodeCoAPOption(
 //------------------------------------------------------------------------------
 
 // Build URI-Path options for a Sig-Net message
-// For example, "/sig-net/v1/level/517" becomes 4 separate Uri-Path options:
+// For example, "/sig-net/v1/local/level/517" becomes 5 separate Uri-Path options:
 //   - "sig-net"
 //   - "v1"
+//   - "local" (or configured scope)
 //   - "level"
 //   - "517"
 //
 // Parameters:
 //   buffer    - Packet buffer to write to
-//   universe  - Universe number (1-63999), used to build "/sig-net/v1/level/{universe}"
+//   universe  - Universe number (1-63999), used to build "/sig-net/v1/{scope}/level/{universe}"
 //
 // Returns:
 //   SIGNET_SUCCESS on success
@@ -106,7 +114,7 @@ int32_t BuildURIPathOptions(
 );
 
 // Build URI string for HMAC calculation (Section 8.5)
-// Returns the full URI path as an ASCII string (e.g., "/sig-net/v1/level/517")
+// Returns the full URI path as an ASCII string (e.g., "/sig-net/v1/local/level/517")
 //
 // Parameters:
 //   universe   - Universe number (1-63999)
