@@ -61,13 +61,16 @@ namespace SigNet {
 // Parameters:
 //   universe    - Universe number (1-63999)
 //   ip_output   - Buffer to receive IP address string (must be at least 16 bytes)
+//   ip_output_size - Total size of ip_output buffer in bytes.
+//                    Must be at least 16 to hold "255.255.255.255" + null terminator.
 //
 // Returns:
 //   SIGNET_SUCCESS on success
 //   SIGNET_ERROR_INVALID_ARG if universe out of range
 int32_t CalculateMulticastAddress(
     uint16_t universe,
-    char* ip_output
+    char* ip_output,
+    size_t ip_output_size
 );
 
 // Get multicast IP octets (for direct use with socket APIs)

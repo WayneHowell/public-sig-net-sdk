@@ -360,7 +360,7 @@ void TestSendModule(TestSuiteResults& results) {
         char ip_buffer[16];
         uint16_t universe = 517;
         
-        int32_t result = CalculateMulticastAddress(universe, ip_buffer);
+        int32_t result = CalculateMulticastAddress(universe, ip_buffer, sizeof(ip_buffer));
         
         bool passed = (result == SIGNET_SUCCESS) &&
                       (strlen(ip_buffer) > 0) &&

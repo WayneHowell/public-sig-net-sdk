@@ -154,10 +154,21 @@ int32_t DeriveManagerLocalKey(
 // Utility Functions
 //------------------------------------------------------------------------------
 
-// Convert 6-byte TUID to 12-character hex string (uppercase, no null terminator)
+// Convert 6-byte TUID to 12-character uppercase hexadecimal string.
+//
+// Output format:
+//   - 12 ASCII characters ('0'–'9', 'A'–'F')
+//   - Null-terminated string
+//
+// Parameters:
+//   tuid             - Input buffer containing 6-byte TUID
+//   hex_output       - Output buffer to receive hex string
+//   hex_string_size  - Size of hex_output buffer in bytes
+//                      (must be >= 13 to hold 12 characters + null terminator)
 void TUID_ToHexString(
-    const uint8_t* tuid,         // Input: 6-byte TUID
-    char* hex_output             // Output: 12-char hex string (caller must provide 12+ bytes)
+    const uint8_t* tuid,
+    char* hex_output,
+    size_t hex_string_size
 );
 
 // Convert 12-character hex string to 6-byte TUID
