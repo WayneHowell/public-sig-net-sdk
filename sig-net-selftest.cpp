@@ -69,6 +69,14 @@ void AddTestResult(TestSuiteResults& results,
 //==============================================================================
 
 void TestCryptoModule(TestSuiteResults& results) {
+#if defined(USE_MBEDTLS)
+    // Test 0 MbdedTLS initialisation
+    {
+        bool passed = Crypto::CryptoInit();
+        AddTestResult(results, "Crypto: MbedTLS RNG initialization (CTR_DRBG seed)",
+              passed, passed ? "" : "initialization failed");     
+    }
+#endif   
     // Test 1: K0 Length Validation
     {
         uint8_t test_k0[32];
@@ -360,7 +368,7 @@ void TestSendModule(TestSuiteResults& results) {
         char ip_buffer[16];
         uint16_t universe = 517;
         
-        int32_t result = CalculateMulticastAddress(universe, ip_buffer);
+        int32_t result = CalculateMulticastAddress(universe, ip_buffer, sizeof(ip_buffer));
         
         bool passed = (result == SIGNET_SUCCESS) &&
                       (strlen(ip_buffer) > 0) &&

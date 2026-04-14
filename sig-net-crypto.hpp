@@ -40,6 +40,25 @@
 namespace SigNet {
 namespace Crypto {
 
+#if defined(USE_MBEDTLS)
+//------------------------------------------------------------------------------
+// MbedTLS Crypto Subsystem Initialization (Internal / Self-Test Only)
+//
+// Initializes the Mbed TLS entropy and CTR_DRBG contexts used by the
+// CryptoRandom() backend.
+//
+// Notes:
+//   - This function is called automatically on first use by CryptoRandom().
+//   - End users do NOT need to call this function explicitly.
+//   - Provided for internal use and self-test validation only.
+//
+// Returns:
+//   true  on successful initialization
+//   false on failure (entropy or DRBG setup failed)
+//------------------------------------------------------------------------------
+bool CryptoInit();
+#endif
+
 //------------------------------------------------------------------------------
 // HMAC-SHA256 Implementation (RFC 2104)
 // 
@@ -131,10 +150,21 @@ int32_t DeriveManagerLocalKey(
 // Utility Functions
 //------------------------------------------------------------------------------
 
-// Convert 6-byte TUID to 12-character hex string (uppercase, no null terminator)
+// Convert 6-byte TUID to 12-character uppercase hexadecimal string.
+//
+// Output format:
+//   - 12 ASCII characters ('0'–'9', 'A'–'F')
+//   - Null-terminated string
+//
+// Parameters:
+//   tuid             - Input buffer containing 6-byte TUID
+//   hex_output       - Output buffer to receive hex string
+//   hex_string_size  - Size of hex_output buffer in bytes
+//                      (must be >= 13 to hold 12 characters + null terminator)
 void TUID_ToHexString(
-    const uint8_t* tuid,         // Input: 6-byte TUID
-    char* hex_output             // Output: 12-char hex string (caller must provide 12+ bytes)
+    const uint8_t* tuid,
+    char* hex_output,
+    size_t hex_string_size
 );
 
 // Convert 12-character hex string to 6-byte TUID
