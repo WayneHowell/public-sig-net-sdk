@@ -34,6 +34,7 @@
 #include "sig-net-parse.hpp"
 #include "sig-net-security.hpp"
 #include "sig-net-crypto.hpp"
+#include "sig-net-coap.hpp"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -624,6 +625,48 @@ int32_t ParseHexWord(const char* text, uint16_t& value_out)
     return SIGNET_SUCCESS;
 }
 
+int32_t ValidateSigNetURI(const char* uri_string)
+{
+    if (!uri_string || uri_string[0] != '/') {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    const char* p = uri_string + 1;
+    const char* seg_end = strchr(p, '/');
+    if (!seg_end) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+    if ((size_t)(seg_end - p) != strlen(SIGNET_URI_PREFIX) ||
+        strncmp(p, SIGNET_URI_PREFIX, (size_t)(seg_end - p)) != 0) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    p = seg_end + 1;
+    seg_end = strchr(p, '/');
+    if (!seg_end) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+    if ((size_t)(seg_end - p) != strlen(SIGNET_URI_VERSION) ||
+        strncmp(p, SIGNET_URI_VERSION, (size_t)(seg_end - p)) != 0) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    p = seg_end + 1;
+    seg_end = strchr(p, '/');
+    if (!seg_end) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    const size_t scope_len = (size_t)(seg_end - p);
+    const char* configured_scope = CoAP::GetURIScope();
+    const size_t configured_len = strlen(configured_scope);
+    if (scope_len != configured_len || strncmp(p, configured_scope, scope_len) != 0) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    return SIGNET_SUCCESS;
+}
+
 //------------------------------------------------------------------------------
 // Verify Packet HMAC
 //------------------------------------------------------------------------------
@@ -667,14 +710,11 @@ int32_t VerifyPacketHMAC(
     }
     
     // Constant-time comparison to prevent timing attacks
-    volatile uint8_t diff = 0; // volatile to prevent compiler optimizations skipping SecureZero
-    for (uint32_t i = 0; i < HMAC_SHA256_LENGTH; i++) {
+    uint8_t diff = 0;
+    for (int i = 0; i < HMAC_SHA256_LENGTH; i++) {
         diff |= (computed_hmac[i] ^ options.hmac[i]);
     }
-
-    SecureZero(hmac_input, sizeof(hmac_input));
-    SecureZero(computed_hmac, sizeof(computed_hmac));
-
+    
     if (diff != 0) {
         return SIGNET_ERROR_HMAC_FAILED;
     }

@@ -1,6 +1,6 @@
 # Sig-Net SDK
 
-A C++ library for the **Sig-Net Protocol Framework v0.15** — a secure, CoAP-based DMX512 control protocol for entertainment lighting networks.
+A C++ library for the **Sig-Net Protocol Framework v0.16** — a secure, CoAP-based DMX512 control protocol for entertainment lighting networks.
 
 The library is designed to compile under general Windows compilers. The test applications are specifically C++Builder.
 To just use the binaries, go to \sig-net-example-tid-level-tx\Win32\Debug
@@ -26,6 +26,9 @@ To just use the binaries, go to \sig-net-example-tid-level-tx\Win32\Debug
 - **Zero External Dependencies** — Windows BCrypt and Winsock2 only
 
 ## Revisions
+
+V0.5 11/4/2026
+Updated to match v0.16 Sig-Net specification.
 
 V0.4 9/4/2026
 Added first draft of Node project.

@@ -51,7 +51,7 @@
 TFormSigNetPoller *FormSigNetPoller;
 
 #define APP_VERSION_MAJOR 0
-#define APP_VERSION_MINOR 4
+#define APP_VERSION_MINOR 5
 #define APP_VERSION_ID ((APP_VERSION_MAJOR << 8) | APP_VERSION_MINOR)
 
 static void SetLabelsTransparentRecursive(TWinControl* root)
@@ -143,7 +143,7 @@ __fastcall TFormSigNetPoller::TFormSigNetPoller(TComponent* Owner)
     udp_socket = INVALID_SOCKET;
     winsock_started = false;
     socket_initialized = false;
-    
+
     memset(k0_key, 0, sizeof(k0_key));
     memset(sender_key, 0, sizeof(sender_key));
     memset(citizen_key, 0, sizeof(citizen_key));
@@ -224,7 +224,7 @@ void TFormSigNetPoller::ShutdownSocket()
 
 void __fastcall TFormSigNetPoller::FormCreate(TObject *Sender)
 {
-	Caption = String().sprintf(L"Sig-Net [TID_POLL Manager]   Copyright Singularity (UK) Ltd  V%d.%d",
+	Caption = String().sprintf(L"Sig-Net [TID_POLL Transmitter]   Copyright Singularity (UK) Ltd  V%d.%d",
                                APP_VERSION_MAJOR,
                                APP_VERSION_MINOR);
 
@@ -241,8 +241,11 @@ void __fastcall TFormSigNetPoller::FormCreate(TObject *Sender)
     }
     EditNicIP->ReadOnly = true;
 
+    EditScope->Text = String(SigNet::CoAP::GetURIScope());
+    ApplyScopeFromUI();
+
     EditAnnounceVersionNum->Text = IntToStr(APP_VERSION_ID);
-	EditAnnounceVersionString->Text = "v0.15-test";
+	EditAnnounceVersionString->Text = "v0.16 Spec";
     EditAnnounceMfgCode->Text = String().sprintf(L"0x%04x", (unsigned int)((SigNet::SoemCodeSdkPoller >> 16) & 0xFFFF));
     EditAnnounceProductVariant->Text = String().sprintf(L"0x%04x", (unsigned int)(SigNet::SoemCodeSdkPoller & 0xFFFF));
     
@@ -305,7 +308,7 @@ void __fastcall TFormSigNetPoller::FormCreate(TObject *Sender)
     WarnIfLoopbackSelected();
     
     LogMessage("Sig-Net Poller initialized.");
-    LogMessage("Click 'Select K0...' to configure the root key.");
+    LogMessage("Click 'Provision' to configure the root key.");
     LogMessage("TID_POLL can be sent manually or by repeat timer.");
 }
 //---------------------------------------------------------------------------
@@ -578,6 +581,10 @@ bool TFormSigNetPoller::SendRawPacket(const uint8_t* packet, uint16_t packet_len
 
 bool TFormSigNetPoller::SendPollPacket()
 {
+    if (!ApplyScopeFromUI()) {
+        return false;
+    }
+
     if (!keys_valid) {
         LogError("Cannot send TID_POLL - keys not derived. Click Select K0 and complete key setup.");
         error_count++;
@@ -673,6 +680,10 @@ bool TFormSigNetPoller::SendPollPacket()
 
 bool TFormSigNetPoller::SendAnnouncePacket()
 {
+    if (!ApplyScopeFromUI()) {
+        return false;
+    }
+
     if (!keys_valid) {
         LogError("Cannot send announce - Kc not available. Click Select K0 first.");
         error_count++;
@@ -819,6 +830,35 @@ void TFormSigNetPoller::LogMessage(const String& msg)
 void TFormSigNetPoller::LogError(const String& msg)
 {
     LogMessage("ERROR: " + msg);
+}
+//---------------------------------------------------------------------------
+
+bool TFormSigNetPoller::ApplyScopeFromUI()
+{
+    AnsiString scope = AnsiString(EditScope->Text.Trim());
+    if (scope.IsEmpty() || scope.Length() > SigNet::SIGNET_URI_SCOPE_MAX_LENGTH) {
+        LogError("Scope must be 1-32 UTF characters");
+        return false;
+    }
+    if (scope.Pos("/") > 0) {
+        LogError("Scope cannot contain '/'");
+        return false;
+    }
+
+    int32_t rc = SigNet::CoAP::SetURIScope(scope.c_str());
+    if (rc != SigNet::SIGNET_SUCCESS) {
+        LogError(String().sprintf(L"Invalid scope value (error %d)", rc));
+        return false;
+    }
+
+    EditScope->Text = String(scope.c_str());
+    return true;
+}
+//---------------------------------------------------------------------------
+
+void __fastcall TFormSigNetPoller::EditScopeChange(TObject *Sender)
+{
+    ApplyScopeFromUI();
 }
 //---------------------------------------------------------------------------
 

@@ -25,10 +25,9 @@
 //==============================================================================
 // Author:       Wayne Howell
 // Date:         March 28, 2026
-// Description:  Implementation of cryptographic functions for Sig-Net.
-//               HMAC-SHA256, HKDF-Expand, PBKDF2, and key derivation.
-//               Windows: uses BCrypt API (bcrypt.lib).
-//               POSIX:   uses OpenSSL (link with -lssl -lcrypto).
+// Description:  Implementation of cryptographic functions using Windows BCrypt.
+//               HMAC-SHA256, HKDF-Expand, and key derivation for Sig-Net.
+//               No external dependencies (uses Windows CryptoAPI).
 //==============================================================================
 
 #include "sig-net-crypto.hpp"
@@ -127,8 +126,7 @@ int32_t HMAC_SHA256(
     if (!key || !message || !output) {
         return SIGNET_ERROR_INVALID_ARG;
     }
-
-#ifdef _WIN32
+    
     BCRYPT_ALG_HANDLE hAlg = NULL;
     BCRYPT_HASH_HANDLE hHash = NULL;
     NTSTATUS status;
@@ -247,9 +245,7 @@ int32_t HKDF_Expand(
     hmac_input[info_len] = HKDF_COUNTER_T1;
     
     // Compute T(1) = HMAC-SHA256(PRK, info || 0x01)
-    int32_t rc = HMAC_SHA256(prk, prk_len, hmac_input, info_len + 1, output);
-    SecureZero(hmac_input, sizeof(hmac_input));
-    return rc;
+    return HMAC_SHA256(prk, prk_len, hmac_input, info_len + 1, output);
 }
 
 //------------------------------------------------------------------------------
@@ -291,17 +287,14 @@ int32_t DeriveManagerLocalKey(const uint8_t* k0, const uint8_t* tuid, uint8_t* m
     // Build info string: "SigNet-Manager-v1-{12-char-hex-TUID}"
     char info_str[40];
     strcpy(info_str, HKDF_INFO_MANAGER_LOCAL_PREFIX);
-
+    
     // Append TUID as 12-char hex string
     char tuid_hex[TUID_HEX_LENGTH + 1];
     TUID_ToHexString(tuid, tuid_hex, sizeof(tuid_hex));
     tuid_hex[TUID_HEX_LENGTH] = '\0';
     strcat(info_str, tuid_hex);
-
-    int32_t rc = HKDF_Expand(k0, K0_KEY_LENGTH, (const uint8_t*)info_str, strlen(info_str), manager_local_key);
-    SecureZero(info_str, sizeof(info_str));
-    SecureZero(tuid_hex, sizeof(tuid_hex));
-    return rc;
+    
+    return HKDF_Expand(k0, K0_KEY_LENGTH, (const uint8_t*)info_str, strlen(info_str), manager_local_key);
 }
 
 //------------------------------------------------------------------------------
@@ -494,7 +487,7 @@ int32_t GetPassphraseValidationReport(const char* passphrase, uint32_t passphras
             status_line = "Passphrase not ready."; break;
     }
 
-    snprintf(report_output, report_size,
+    sprintf(report_output,
         "Length: %d/10-64 | Classes: %d/4 (U:%s L:%s D:%s S:%s)\n"
         "No triple identical: %s | No 4-char sequence: %s\n"
         "%s",
@@ -519,8 +512,7 @@ int32_t DeriveK0FromPassphrase(
     if (!passphrase || passphrase_len == 0 || !k0_output) {
         return SIGNET_ERROR_INVALID_ARG;
     }
-
-#ifdef _WIN32
+    
     BCRYPT_ALG_HANDLE hAlg = NULL;
     NTSTATUS status;
     
@@ -604,12 +596,11 @@ int32_t GenerateRandomPassphrase(char* passphrase_output, uint32_t buffer_size) 
     const int digit_len = strlen(PASSPHRASE_GEN_DIGITS);
     const int symbol_len = strlen(PASSPHRASE_GEN_SYMBOLS);
     
-    // Generate random bytes
+    // Generate random bytes using BCrypt
     uint8_t random_bytes[PASSPHRASE_GENERATED_LENGTH];
     if (!CryptoRandom(random_bytes, PASSPHRASE_GENERATED_LENGTH)) {
         return SIGNET_ERROR_CRYPTO;
     }
-
     
     // Build passphrase ensuring at least 3 character classes
     // Force first 3 characters to be from different classes
@@ -651,8 +642,7 @@ int32_t GenerateRandomPassphrase(char* passphrase_output, uint32_t buffer_size) 
     }
 
     passphrase_output[passphrase_length] = '\0';
-    SecureZero(random_bytes, sizeof(random_bytes));
-
+    
     // Verify it passes validation (should always pass given our construction)
     int32_t validation = ValidatePassphrase(passphrase_output, passphrase_length);
     if (validation != SIGNET_PASSPHRASE_VALID) {
@@ -670,6 +660,7 @@ int32_t GenerateRandomK0(uint8_t* k0_output) {
     if (!k0_output) {
         return SIGNET_ERROR_INVALID_ARG;
     }
+
     if (!CryptoRandom(k0_output, 32)) {
         return SIGNET_ERROR_CRYPTO;
     }

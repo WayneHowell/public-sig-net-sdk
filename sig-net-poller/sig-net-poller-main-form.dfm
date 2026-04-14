@@ -39,12 +39,19 @@ object FormSigNetPoller: TFormSigNetPoller
         Height = 13
         Caption = 'IP:'
       end
+      object LabelScope: TLabel
+        Left = 610
+        Top = 25
+        Width = 33
+        Height = 13
+        Caption = 'Scope:'
+      end
       object ButtonSelectK0: TButton
         Left = 16
         Top = 20
         Width = 105
         Height = 25
-        Caption = 'Select K0...'
+        Caption = 'Provision'
         TabOrder = 3
         OnClick = ButtonSelectK0Click
       end
@@ -89,6 +96,16 @@ object FormSigNetPoller: TFormSigNetPoller
         Caption = 'Self-Test'
         TabOrder = 2
         OnClick = ButtonSelfTestClick
+      end
+      object EditScope: TEdit
+        Left = 652
+        Top = 22
+        Width = 124
+        Height = 21
+        MaxLength = 32
+        TabOrder = 5
+        Text = 'local'
+        OnChange = EditScopeChange
       end
     end
     object GroupBoxAnnounce: TGroupBox
@@ -140,7 +157,7 @@ object FormSigNetPoller: TFormSigNetPoller
         Width = 250
         Height = 21
         TabOrder = 1
-        Text = 'v0.15-test'
+        Text = '??'
       end
       object EditAnnounceMfgCode: TEdit
         Left = 142

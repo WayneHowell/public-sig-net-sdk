@@ -86,6 +86,8 @@ __published:    // IDE-managed Components
     TEdit *EditNicIP;
     TButton *ButtonSelectNic;
     TButton *ButtonSelfTest;
+    TLabel *LabelScope;
+    TEdit *EditScope;
 
     // -------------------------------------------------------------------------
     // GroupBoxAnnounce - On-boot announce packet test
@@ -277,6 +279,7 @@ __published:    // IDE-managed Components
     void __fastcall ButtonSupportedTidsMandatedClick(TObject *Sender);
     void __fastcall ButtonSupportedTidsAllClick(TObject *Sender);
     void __fastcall PaintBoxEP1LevelsPaint(TObject *Sender);
+    void __fastcall EditScopeChange(TObject *Sender);
 
 private:    // User declarations
     // Cryptographic keys
@@ -328,6 +331,7 @@ private:    // User declarations
     void UpdateStatusDisplay();
     void LogMessage(const String& msg);
     void LogError(const String& msg);
+    bool ApplyScopeFromUI();
     bool ParseK0FromHex(const String& hex_string);
     bool ParseTUIDFromHex(const String& hex_string);
     bool ParseHexTUIDField(const String& hex_string, uint8_t out_tuid[6]);

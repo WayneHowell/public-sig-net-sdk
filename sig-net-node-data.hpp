@@ -105,7 +105,7 @@ bool StoreNodeBlobFromBytesIfChanged(TidDataBlob& blob,
 // Builds the TLV payload for a poll reply at the given query level, reading
 // all values from NodeUserData and NodeConfig.
 //
-// query_level  – QUERY_HEARTBEAT (0x00), QUERY_CONFIG (0x01), QUERY_FULL (0x02)
+// query_level  – QUERY_HEARTBEAT (0x00), QUERY_CONFIG (0x01), QUERY_FULL (0x02), QUERY_EXTENDED (0x03)
 // data         – all per-TID blob values (populated from UI / Sig-Net traffic)
 // config       – identity fields (TUID, mfg code, etc.)
 // payload_out  – reset and filled by this function

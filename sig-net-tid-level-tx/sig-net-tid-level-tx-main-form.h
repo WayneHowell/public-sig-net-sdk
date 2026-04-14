@@ -119,7 +119,9 @@ __published:	// IDE-managed Components
     TGroupBox *GroupBoxStatus;
     TMemo *MemoStatus;
 	TButton *ButtonSelfTest;
-    
+    TLabel *LabelScope;
+    TEdit *EditScope;
+
     // IPWorks UDP component (placeholder - add when component available)
     // TipwUDPPort *UDPPort;
     
@@ -139,7 +141,8 @@ __published:	// IDE-managed Components
     void __fastcall ScrollBarDMXChange(TObject *Sender);
     void __fastcall TrackBarDMXChange(TObject *Sender);
     void __fastcall PanelTrackbarsResize(TObject *Sender);
-    
+    void __fastcall EditScopeChange(TObject *Sender);
+
 private:	// User declarations
     // Cryptographic keys
     uint8_t k0_key[32];
@@ -174,7 +177,7 @@ private:	// User declarations
     bool winsock_started;
     bool socket_initialized;
     AnsiString selected_nic_ip;  // Source IP for multicast interface binding
-    
+
     // DMX Fader controls (dynamic)
     TTrackBar *dmx_trackbars[32];       // 32 visible trackbars
     TLabel *dmx_labels[32];             // 32 channel labels
@@ -185,6 +188,7 @@ private:	// User declarations
     void UpdateStatusDisplay();
     void LogMessage(const String& msg);
     void LogError(const String& msg);
+    bool ApplyScopeFromUI();
     bool ParseK0FromHex(const String& hex_string);
     bool ParseTUIDFromHex(const String& hex_string);
     int GetBadFrameInterval();

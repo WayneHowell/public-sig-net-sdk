@@ -230,6 +230,10 @@ int32_t ParseEndpointValue(const char* text, uint16_t& endpoint_out);
 // Parse 16-bit hex word with optional "0x" prefix.
 int32_t ParseHexWord(const char* text, uint16_t& value_out);
 
+// Validate Sig-Net URI shape and scope match.
+// Expected prefix: /sig-net/<version>/<scope>/...
+int32_t ValidateSigNetURI(const char* uri_string);
+
 //------------------------------------------------------------------------------
 // Verify Packet HMAC
 // 

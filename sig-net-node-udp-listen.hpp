@@ -128,6 +128,9 @@ inline bool ExtractPayload(const uint8_t* packet,
     if (SigNet::Parse::ExtractURIString(uri_reader, uri_out, uri_out_size, uri_len) != SigNet::SIGNET_SUCCESS) {
         return false;
     }
+    if (SigNet::Parse::ValidateSigNetURI(uri_out) != SigNet::SIGNET_SUCCESS) {
+        return false;
+    }
 
     SigNet::Parse::PacketReader option_reader(packet, packet_len);
     if (SigNet::Parse::ParseCoAPHeader(option_reader, temp_header) != SigNet::SIGNET_SUCCESS) {
