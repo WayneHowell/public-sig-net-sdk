@@ -10,6 +10,7 @@
 #include "sig-net-tlv.hpp"
 #include "sig-net-security.hpp"
 #include "sig-net-send.hpp"
+#include "sig-net-parse.hpp"   // for Parse::PacketReader, ParseCoAPHeader, etc.
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,13 +42,27 @@ void AddTestResult(TestSuiteResults& results,
                    bool passed,
                    const char* error_message) {
     if (results.test_count >= TestSuiteResults::MAX_TESTS) {
-        return;  // Array full, skip additional tests
+        // Surface overflow as an explicit failure rather than silently dropping tests.
+        TestResult& last = results.tests[TestSuiteResults::MAX_TESTS - 1];
+        strncpy(last.name, "[FATAL] Test array overflow", sizeof(last.name) - 1);
+        last.name[sizeof(last.name) - 1] = '\0';
+        strncpy(last.error_message,
+                "Increase TestSuiteResults::MAX_TESTS",
+                sizeof(last.error_message) - 1);
+        last.error_message[sizeof(last.error_message) - 1] = '\0';
+        if (last.passed) {
+            // The overwritten slot used to be a passing test; rebalance counters.
+            last.passed = false;
+            if (results.passed_count > 0) results.passed_count--;
+            results.failed_count++;
+        }
+        return;
     }
-    
+
     TestResult& test = results.tests[results.test_count];
     strncpy(test.name, test_name, sizeof(test.name) - 1);
     test.name[sizeof(test.name) - 1] = '\0';
-    
+
     test.passed = passed;
     if (error_message) {
         strncpy(test.error_message, error_message, sizeof(test.error_message) - 1);
@@ -55,7 +70,7 @@ void AddTestResult(TestSuiteResults& results,
     } else {
         test.error_message[0] = '\0';
     }
-    
+
     results.test_count++;
     if (passed) {
         results.passed_count++;
@@ -402,18 +417,194 @@ void TestSendModule(TestSuiteResults& results) {
 }
 
 //==============================================================================
+// Rejection-path + README v0.5 known-vector tests
+//==============================================================================
+
+namespace {
+    int HexNibbleVal(char c) {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+        if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+        return -1;
+    }
+    bool HexDecode(const char* hex, uint8_t* out, size_t out_len) {
+        for (size_t i = 0; i < out_len; ++i) {
+            int hi = HexNibbleVal(hex[2*i]);
+            int lo = HexNibbleVal(hex[2*i + 1]);
+            if (hi < 0 || lo < 0) return false;
+            out[i] = static_cast<uint8_t>((hi << 4) | lo);
+        }
+        return true;
+    }
+}
+
+void TestRejectionPaths(TestSuiteResults& results) {
+    // Pin the SDK against the README v0.5 PBKDF2 + HKDF chain.
+    uint8_t expected_k0[32];
+    bool k0_ok = HexDecode(SigNet::TEST_K0, expected_k0, 32);
+
+    uint8_t derived_k0[32];
+    int32_t k0_rc = Crypto::DeriveK0FromPassphrase(
+        SigNet::TEST_PASSPHRASE,
+        static_cast<uint32_t>(strlen(SigNet::TEST_PASSPHRASE)),
+        derived_k0
+    );
+    bool pbkdf2_match = k0_ok && (k0_rc == SIGNET_SUCCESS) &&
+                        (memcmp(derived_k0, expected_k0, 32) == 0);
+    AddTestResult(results,
+        "Crypto: PBKDF2 README v0.5 vector (Ge2p$E$4*A -> 52fcc2e7…)",
+        pbkdf2_match,
+        pbkdf2_match ? "" : "K0 derivation does not match the documented vector");
+
+    {
+        uint8_t expected_ks[32];
+        bool ok = HexDecode(
+            "78981fe02576b2e9e47d916853d5967f34f8ae8aaae46db0495b178a75620e89",
+            expected_ks, 32);
+        uint8_t ks[32];
+        int32_t rc = Crypto::DeriveSenderKey(expected_k0, ks);
+        bool passed = ok && k0_ok && (rc == SIGNET_SUCCESS) &&
+                      (memcmp(ks, expected_ks, 32) == 0);
+        AddTestResult(results, "Crypto: HKDF Sender Key README v0.5 vector",
+                      passed, passed ? "" : "Ks does not match documented vector");
+    }
+    {
+        uint8_t expected_kc[32];
+        bool ok = HexDecode(
+            "1973cecb72f2506f8b5c442c565f0c6a68aee8a873b8ef26e957b88a7fc54b80",
+            expected_kc, 32);
+        uint8_t kc[32];
+        int32_t rc = Crypto::DeriveCitizenKey(expected_k0, kc);
+        bool passed = ok && k0_ok && (rc == SIGNET_SUCCESS) &&
+                      (memcmp(kc, expected_kc, 32) == 0);
+        AddTestResult(results, "Crypto: HKDF Citizen Key README v0.5 vector",
+                      passed, passed ? "" : "Kc does not match documented vector");
+    }
+    {
+        uint8_t expected_kmg[32];
+        bool ok = HexDecode(
+            "2f6b76ffe666dc65504be86828277ec9ef8a04fe329652c233ab537ad434fa0d",
+            expected_kmg, 32);
+        uint8_t kmg[32];
+        int32_t rc = Crypto::DeriveManagerGlobalKey(expected_k0, kmg);
+        bool passed = ok && k0_ok && (rc == SIGNET_SUCCESS) &&
+                      (memcmp(kmg, expected_kmg, 32) == 0);
+        AddTestResult(results, "Crypto: HKDF Manager-Global README v0.5 vector",
+                      passed, passed ? "" : "Km_global does not match documented vector");
+    }
+
+    // HMAC tamper rejection: a one-bit flip on the tag must be detectable.
+    {
+        uint8_t key[20];
+        memset(key, 0x0B, sizeof(key));
+        const uint8_t data[] = { 'H', 'i', ' ', 'T', 'h', 'e', 'r', 'e' };
+        uint8_t hmac[32];
+        int32_t rc = Crypto::HMAC_SHA256(key, sizeof(key), data, sizeof(data), hmac);
+        uint8_t tampered[32];
+        memcpy(tampered, hmac, 32);
+        tampered[0] ^= 0x01;
+        bool passed = (rc == SIGNET_SUCCESS) && (memcmp(hmac, tampered, 32) != 0);
+        AddTestResult(results, "Crypto: HMAC tamper detection",
+                      passed, passed ? "" : "Tampered HMAC compared equal");
+    }
+
+    // Passphrase rule rejection.
+    {
+        // 10 chars, only uppercase + digits = 2 of 4 classes. No repeats, no
+        // 4-sequential runs, length OK -- only the class rule should trip.
+        const char* two_classes = "Q4M8K2N7H1";
+        Crypto::PassphraseChecks checks;
+        int32_t rc = Crypto::AnalysePassphrase(two_classes, strlen(two_classes), &checks);
+        bool passed = (rc == SIGNET_PASSPHRASE_INSUFFICIENT_CLASSES) && !checks.classes_ok;
+        AddTestResult(results, "Crypto: Passphrase rejection (insufficient classes)",
+                      passed, passed ? "" : "Should have rejected 2-class passphrase");
+    }
+    {
+        // 66 chars (over the 64 cap), all 4 classes, no triple-identical, no
+        // 4-sequential. Built by repeating a known-valid 15-char passphrase.
+        const char* too_long = "Secure@Pass123!Secure@Pass123!Secure@Pass123!Secure@Pass123!Secure";
+        Crypto::PassphraseChecks checks;
+        int32_t rc = Crypto::AnalysePassphrase(too_long, strlen(too_long), &checks);
+        bool passed = (rc == SIGNET_PASSPHRASE_TOO_LONG) && !checks.length_ok;
+        AddTestResult(results, "Crypto: Passphrase rejection (too long)",
+                      passed, passed ? "" : "Should have rejected >64-char passphrase");
+    }
+
+    // CoAP malformed-frame rejection.
+    {
+        // Truncated header (header is always 4 bytes).
+        const uint8_t buf[3] = { 0x40, 0x02, 0x00 };
+        Parse::PacketReader reader(buf, sizeof(buf));
+        CoAPHeader h;
+        int32_t rc = Parse::ParseCoAPHeader(reader, h);
+        bool passed = (rc != SIGNET_SUCCESS);
+        AddTestResult(results, "CoAP: Reject truncated header",
+                      passed, passed ? "" : "Truncated header was accepted");
+    }
+    {
+        // length=14 with ext=0xFFFF (would wrap uint16_t to 268) — must reject.
+        const uint8_t buf[] = {
+            0x4E, 0x02, 0x00, 0x01,
+            0x0E,
+            0xFF, 0xFF
+        };
+        Parse::PacketReader reader(buf, sizeof(buf));
+        CoAPHeader h;
+        Parse::ParseCoAPHeader(reader, h);
+        Parse::SkipToken(reader, h.GetTokenLength());
+        uint16_t opt_num = 0;
+        const uint8_t* opt_value = 0;
+        uint16_t opt_length = 0;
+        int32_t rc = Parse::ParseCoAPOption(reader, 0, opt_num, opt_value, opt_length);
+        bool passed = (rc == SIGNET_ERROR_INVALID_PACKET);
+        AddTestResult(results, "CoAP: Reject extended-length overflow",
+                      passed, passed ? "" : "Extended-length overflow was accepted");
+    }
+
+    // Send-path: endpoint=0 is the Root Endpoint; senders must be refused.
+    {
+        PacketBuffer buffer;
+        uint8_t dmx[16]; memset(dmx, 0x80, sizeof(dmx));
+        uint8_t tuid[6]; memset(tuid, 0xAB, sizeof(tuid));
+        uint8_t key[32]; memset(key, 0x42, sizeof(key));
+        int32_t rc = BuildDMXPacket(buffer, 1, dmx, sizeof(dmx),
+                                    tuid, /*endpoint=*/0, 0x0000,
+                                    1, 1, key, 1);
+        bool passed = (rc == SIGNET_ERROR_INVALID_ARG);
+        AddTestResult(results, "Send: BuildDMXPacket rejects endpoint=0",
+                      passed, passed ? "" : "endpoint=0 was accepted (root endpoint not for DMX senders)");
+    }
+
+    // Determinism: identical inputs must produce identical output bytes.
+    {
+        PacketBuffer a, b;
+        uint8_t dmx[32]; for (int i = 0; i < 32; ++i) dmx[i] = static_cast<uint8_t>(i * 7);
+        uint8_t tuid[6] = {'S','L', 0, 0, 0, 1};
+        uint8_t key[32]; memset(key, 0x55, sizeof(key));
+        int32_t ra = BuildDMXPacket(a, 17, dmx, 32, tuid, 1, 0, 5, 9, key, 0x1234);
+        int32_t rb = BuildDMXPacket(b, 17, dmx, 32, tuid, 1, 0, 5, 9, key, 0x1234);
+        bool passed = (ra == SIGNET_SUCCESS) && (rb == SIGNET_SUCCESS) &&
+                      (a.GetSize() == b.GetSize()) &&
+                      (memcmp(a.GetBuffer(), b.GetBuffer(), a.GetSize()) == 0);
+        AddTestResult(results, "Send: BuildDMXPacket is deterministic",
+                      passed, passed ? "" : "Two calls with identical inputs produced different bytes");
+    }
+}
+
+//==============================================================================
 // Main Test Runner
 //==============================================================================
 
 int32_t RunAllTests(TestSuiteResults& results) {
     results.Reset();
-    
+
     TestCryptoModule(results);
     TestCoAPModule(results);
     TestTLVModule(results);
     TestSecurityModule(results);
     TestSendModule(results);
-    
+    TestRejectionPaths(results);
+
     return (results.failed_count == 0) ? SIGNET_SUCCESS : SIGNET_TEST_FAILURE;
 }
 
