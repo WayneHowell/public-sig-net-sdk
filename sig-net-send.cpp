@@ -431,7 +431,12 @@ int32_t BuildDMXPacket(
     if (slot_count < 1 || slot_count > MAX_DMX_SLOTS) {
         return SIGNET_ERROR_INVALID_ARG;
     }
-    
+
+    // EP 0 is the Root Endpoint; senders use >= 1.
+    if (endpoint == 0) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
     // Reset buffer for new packet
     buffer.Reset();
     
