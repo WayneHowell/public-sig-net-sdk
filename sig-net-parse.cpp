@@ -99,6 +99,14 @@ bool PacketReader::Skip(uint16_t count) {
     return true;
 }
 
+bool PacketReader::Seek(uint16_t new_position) {
+    if (new_position > size_) {
+        return false;
+    }
+    position_ = new_position;
+    return true;
+}
+
 bool PacketReader::PeekByte(uint8_t& value) const {
     if (position_ >= size_) {
         return false;
@@ -207,13 +215,23 @@ int32_t ParseCoAPOption(
         if (!reader.ReadUInt16(length_ext)) {
             return SIGNET_ERROR_BUFFER_TOO_SMALL;
         }
-        length = 269 + length_ext;
+        // 269 + 0xFFFF wraps uint16_t — widen, bound, then narrow.
+        uint32_t full = 269u + length_ext;
+        if (full > MAX_UDP_PAYLOAD) {
+            return SIGNET_ERROR_INVALID_PACKET;
+        }
+        length = static_cast<uint16_t>(full);
     }
     else if (length == 15) {
         // Reserved
         return SIGNET_ERROR_INVALID_PACKET;
     }
-    
+
+    // Sig-Net options never exceed MAX_UDP_PAYLOAD; bound regardless of encoding.
+    if (length > MAX_UDP_PAYLOAD) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
     // Calculate absolute option number
     option_num = prev_option + delta;
     option_length = length;
@@ -253,21 +271,24 @@ int32_t ExtractURIString(
     bool first_segment = true;
     
     while (true) {
+        // Snapshot so we can rewind a non-Uri-Path option for the next phase.
+        uint16_t option_start_pos = reader.GetPosition();
+
         uint16_t option_num;
         const uint8_t* option_value;
         uint16_t option_length;
-        
+
         int32_t result = ParseCoAPOption(reader, current_option, option_num, option_value, option_length);
-        
+
         if (result == SIGNET_ERROR_INVALID_PACKET) {
             // Hit payload marker or end of options
             break;
         }
-        
+
         if (result != SIGNET_SUCCESS) {
             return result;
         }
-        
+
         // Check if this is a Uri-Path option (11)
         if (option_num == COAP_OPTION_URI_PATH) {
             // Add separator between segments (but not before first)
@@ -278,7 +299,7 @@ int32_t ExtractURIString(
                 uri_string[uri_pos++] = '/';
             }
             first_segment = false;
-            
+
             // Copy segment
             if (uri_pos + option_length > uri_buffer_size) {
                 return SIGNET_ERROR_BUFFER_FULL;
@@ -287,12 +308,10 @@ int32_t ExtractURIString(
             uri_pos += option_length;
         }
         else if (option_num > COAP_OPTION_URI_PATH) {
-            // Past Uri-Path options, need to rewind for next phase
-            // This is tricky - we'll handle it by stopping and letting
-            // ParseSigNetOptions re-parse from the beginning
+            reader.Seek(option_start_pos);   // hand the option to the next phase
             break;
         }
-        
+
         current_option = option_num;
     }
     
@@ -311,12 +330,11 @@ int32_t ExtractURIString(
 //------------------------------------------------------------------------------
 int32_t ParseSigNetOptions(
     PacketReader& reader,
-    SigNetOptions& options
+    SigNetOptions& options,
+    uint16_t initial_prev_option
 ) {
-    // This function expects reader to be positioned after CoAP header + token,
-    // and will parse through Uri-Path options to find SigNet custom options
-    
-    uint16_t current_option = 0;
+    // 0 if starting fresh; COAP_OPTION_URI_PATH if chained after ExtractURIString.
+    uint16_t current_option = initial_prev_option;
     bool found_security_mode = false;
     bool found_sender_id = false;
     bool found_mfg_code = false;

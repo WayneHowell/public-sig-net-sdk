@@ -134,12 +134,15 @@ enum TidBlobValueType {
 
 static const uint16_t TID_BLOB_MAX_BYTES = 512;
 
+// 32-bit volatile flag for cross-thread (UI / RX) writes; aligned long is atomic on x86.
+typedef volatile long SigNetAtomicFlag;
+
 struct TidDataBlob {
     uint16_t tid;
     uint16_t length;
     uint8_t value_type;
-    bool manager_is_stale;  // Set when UI changes the value; cleared after proactive TX
-    bool ui_is_stale;       // Set when Sig-Net SET updates the value; cleared after UI sync
+    SigNetAtomicFlag manager_is_stale;  // Set when UI changes the value; cleared after proactive TX
+    SigNetAtomicFlag ui_is_stale;       // Set when Sig-Net SET updates the value; cleared after UI sync
     union {
         uint8_t u8;
         uint16_t u16;
@@ -149,7 +152,7 @@ struct TidDataBlob {
     } data;
 
     TidDataBlob() : tid(0), length(0), value_type(TID_BLOB_EMPTY),
-                    manager_is_stale(false), ui_is_stale(false) {
+                    manager_is_stale(0), ui_is_stale(0) {
         memset(data.bytes, 0, sizeof(data.bytes));
         data.text[0] = 0;
     }
@@ -274,13 +277,12 @@ struct NodeUserData {
 class PacketBuffer {
 public:
     PacketBuffer() : write_position_(0) {
-        memset(buffer_, 0, MAX_UDP_PAYLOAD);
+        // Buffer not zeroed; only write_position_ bytes are exposed by GetBuffer/GetSize.
     }
-    
+
     // Reset buffer for new packet construction
     void Reset() {
         write_position_ = 0;
-        memset(buffer_, 0, MAX_UDP_PAYLOAD);
     }
     
     // Get current write position

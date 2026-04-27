@@ -64,7 +64,8 @@ public:
     bool ReadUInt32(uint32_t& value);  // Network byte order
     bool ReadBytes(uint8_t* dest, uint16_t count);
     bool Skip(uint16_t count);
-    
+    bool Seek(uint16_t new_position);
+
     // Peek operations (don't advance position)
     bool PeekByte(uint8_t& value) const;
     
@@ -153,21 +154,18 @@ int32_t ExtractURIString(
 
 //------------------------------------------------------------------------------
 // Parse SigNet Options
-// 
-// Parses all 6 SigNet custom options (2076-2236) from a packet.
-// 
-// Parameters:
-//   reader - PacketReader positioned after Uri-Path options
-//   options - Output: Receives parsed SigNet options
 //
-// Returns:
-//   SIGNET_SUCCESS on success
-//   SIGNET_ERROR_INVALID_OPTION if required option missing
-//   SIGNET_ERROR_BUFFER_TOO_SMALL if packet data insufficient
+// Parses all 6 SigNet custom options (2076-2236) from a packet.
+//
+// initial_prev_option seeds the delta accumulator: pass 0 when starting from
+// the option run, or COAP_OPTION_URI_PATH when chained after ExtractURIString.
+//
+// Returns SIGNET_SUCCESS, or SIGNET_ERROR_INVALID_OPTION / SIGNET_ERROR_BUFFER_TOO_SMALL.
 //------------------------------------------------------------------------------
 int32_t ParseSigNetOptions(
     PacketReader& reader,
-    SigNetOptions& options
+    SigNetOptions& options,
+    uint16_t initial_prev_option = 0
 );
 
 //------------------------------------------------------------------------------

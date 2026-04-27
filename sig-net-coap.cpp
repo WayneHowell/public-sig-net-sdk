@@ -383,10 +383,15 @@ int32_t BuildURIString(
             if (pos + 1 >= packet_len) {
                 return false;
             }
-            uint16_t ext = (static_cast<uint16_t>(packet[pos]) << 8) |
-                           static_cast<uint16_t>(packet[pos + 1]);
+            // 0xFFFF + 269 wraps in uint16_t to 268 — widen first, then bound.
+            uint32_t ext = (static_cast<uint32_t>(packet[pos]) << 8) |
+                           static_cast<uint32_t>(packet[pos + 1]);
             pos += 2;
-            value = static_cast<uint16_t>(ext + 269);
+            uint32_t full = ext + 269u;
+            if (full > 0xFFFFu) {
+                return false;
+            }
+            value = static_cast<uint16_t>(full);
             return true;
         }
 

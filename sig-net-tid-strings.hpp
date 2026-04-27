@@ -318,16 +318,23 @@ inline const SupportedTidEntry* GetSupportedTidTable()
     return k_table;
 }
 
-inline bool IsTidWriteOnly(uint16_t tid)
+// Shared lookup. Linear scan; k_table is ordered for UI/wire iteration so
+// can't be re-sorted for bsearch. One touch point if that ever changes.
+inline const SupportedTidEntry* FindTidEntry(uint16_t tid)
 {
     const SupportedTidEntry* table = GetSupportedTidTable();
-    int i;
-    for (i = 0; i < SUPPORTED_TID_COUNT; ++i) {
+    for (int i = 0; i < SUPPORTED_TID_COUNT; ++i) {
         if (table[i].tid == tid) {
-            return table[i].write_only;
+            return &table[i];
         }
     }
-    return false;
+    return 0;
+}
+
+inline bool IsTidWriteOnly(uint16_t tid)
+{
+    const SupportedTidEntry* e = FindTidEntry(tid);
+    return e ? e->write_only : false;
 }
 
 inline bool IsTidGetSupported(uint16_t tid)
@@ -335,15 +342,8 @@ inline bool IsTidGetSupported(uint16_t tid)
     if (tid == TID_RT_SUPPORTED_TIDS) {
         return true;
     }
-
-    const SupportedTidEntry* table = GetSupportedTidTable();
-    int i;
-    for (i = 0; i < SUPPORTED_TID_COUNT; ++i) {
-        if (table[i].tid == tid) {
-            return table[i].supports_get;
-        }
-    }
-    return false;
+    const SupportedTidEntry* e = FindTidEntry(tid);
+    return e ? e->supports_get : false;
 }
 
 inline bool IsTidAllowedForEndpoint(uint16_t tid, bool is_root_ep, bool is_data_ep)
@@ -356,13 +356,10 @@ inline bool IsTidAllowedForEndpoint(uint16_t tid, bool is_root_ep, bool is_data_
         return is_root_ep;
     }
 
-    const SupportedTidEntry* table = GetSupportedTidTable();
-    int i;
-    for (i = 0; i < SUPPORTED_TID_COUNT; ++i) {
-        if (table[i].tid == tid) {
-            return (is_root_ep && table[i].allowed_root_ep) ||
-                   (is_data_ep && table[i].allowed_data_ep);
-        }
+    const SupportedTidEntry* e = FindTidEntry(tid);
+    if (e) {
+        return (is_root_ep && e->allowed_root_ep) ||
+               (is_data_ep && e->allowed_data_ep);
     }
 
     switch (tid) {
