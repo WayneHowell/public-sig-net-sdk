@@ -1268,6 +1268,7 @@ void TFormSigNetTx::UpdateK0DependentControls()
     ButtonDeprovision->Enabled = true;
     GroupBoxTransmit->Enabled = k0_set;
     GroupBoxDMXFaders->Enabled = k0_set;
+    CheckInsertBadFrames->Enabled = k0_set;
     // Disarm keep-alive if K0 is no longer valid
     if (!k0_set) {
         TimerKeepAlive->Enabled = false;
