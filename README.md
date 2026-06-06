@@ -27,31 +27,42 @@ To just use the binaries, go to \sig-net-example-tid-level-tx\Win32\Debug
 
 ## Revisions
 
-V0.5 11/4/2026
+### V0.5 – 2026-04-11
+
 Updated to match v0.16 Sig-Net specification.
 
-V0.4 9/4/2026
+### V0.4 – 2026-04-09
+
 Added first draft of Node project.
 
-V0.3 2/4/2026
-Added C++Builder v10 project files.
-Disabled transmit DMX group until K0 set.
-Changed all key display to lowercase per v0.14 document
-Updated for v0.15 document.
-Allowed "from IP" to be loopback for testing.
-Added option to send bad frames.
-Added test Passcode and K0 buttons:
-Passphrase: Ge2p$E$4*A
-K0: 52fcc2e7749f40358ba00b1d557dc11861e89868e139f23014f6a0cfe59cf173
-Results:
-Ks: 78981fe02576b2e9e47d916853d5967f34f8ae8aaae46db0495b178a75620e89
-Kc: 1973cecb72f2506f8b5c442c565f0c6a68aee8a873b8ef26e957b88a7fc54b80
-Km_global: 2f6b76ffe666dc65504be86828277ec9ef8a04fe329652c233ab537ad434fa0d
+### V0.3 – 2026-04-02
 
-V0.2 1/4/2026
+Added C++Builder v10 project files.
+
+Disabled transmit DMX group until K0 set.
+
+Changed all key display to lowercase per v0.14 document
+
+Updated for v0.15 document.
+
+Allowed "from IP" to be loopback for testing.
+
+Added option to send bad frames.
+
+Added test Passcode and K0 buttons:
+- Passphrase: `Ge2p$E$4*A`
+- `K0`: `52fcc2e7749f40358ba00b1d557dc11861e89868e139f23014f6a0cfe59cf173`
+- Results:
+  - `Ks`: `78981fe02576b2e9e47d916853d5967f34f8ae8aaae46db0495b178a75620e89`
+  - `Kc`: `1973cecb72f2506f8b5c442c565f0c6a68aee8a873b8ef26e957b88a7fc54b80`
+  - `Km_global`: `2f6b76ffe666dc65504be86828277ec9ef8a04fe329652c233ab537ad434fa0d`
+
+### V0.2 – 2026-04-01
+
 Sender URI was set to Endpoint = 0 which is illegal. Corrected.
 
-V0.1 31/3/2026
+### V0.1 – 2026-03-31
+
 First release of the "sig-net-example-tid-level-tx.exe"
 
 ## Protocol Overview

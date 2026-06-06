@@ -45,16 +45,17 @@ namespace SigNet {
 //------------------------------------------------------------------------------
 int32_t CalculateMulticastAddress(
     uint16_t universe,
-    char* ip_output
+    char* ip_output,
+    size_t ip_output_size
 ) {
-    if (!ip_output) {
+    if (!ip_output || ip_output_size == 0) {
         return SIGNET_ERROR_INVALID_ARG;
     }
-    
+
     if (universe < MIN_UNIVERSE || universe > MAX_UNIVERSE) {
         return SIGNET_ERROR_INVALID_ARG;
     }
-    
+
     // Multicast Folding Formula: Index = ((Universe - 1) % 100) + 1
     uint8_t index = static_cast<uint8_t>(((universe - 1) % 100) + 1);
     
@@ -199,7 +200,7 @@ int32_t BuildNodeURIPathOptions(
 
     char tuid_hex[TUID_HEX_LENGTH + 1];
     tuid_hex[TUID_HEX_LENGTH] = '\0';
-    Crypto::TUID_ToHexString(tuid, tuid_hex);
+    Crypto::TUID_ToHexString(tuid, tuid_hex, sizeof(tuid_hex));
 
     char endpoint_str[6];
     int endpoint_written = snprintf(endpoint_str, sizeof(endpoint_str), "%u", endpoint);
