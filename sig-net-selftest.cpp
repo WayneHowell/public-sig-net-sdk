@@ -239,7 +239,7 @@ void TestCoAPModule(TestSuiteResults& results) {
     
     // Test 3: URI string building
     {
-        char uri_buffer[64];
+        char uri_buffer[URI_STRING_MIN_BUFFER];
         int32_t result = CoAP::BuildURIString(517, uri_buffer, sizeof(uri_buffer));
         bool passed = (result == SIGNET_SUCCESS) && (strlen(uri_buffer) > 0);
         AddTestResult(results, "CoAP: Build URI String",
