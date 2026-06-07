@@ -1,4 +1,4 @@
-﻿//==============================================================================
+//==============================================================================
 // Sig-Net Protocol Framework - Node Application Main Form Implementation
 //==============================================================================
 //
@@ -62,6 +62,23 @@ static void SecureZeroBuffer(void* ptr, size_t len)
         *p++ = 0;
         --len;
     }
+}
+
+// the staleness flags are shared between the ui and network paths, so every
+// access goes through an interlocked op rather than a plain read or write
+static void MarkStale(SigNet::SigNetAtomicFlag& flag)
+{
+    InterlockedExchange(&flag, 1);
+}
+
+static void ClearStale(SigNet::SigNetAtomicFlag& flag)
+{
+    InterlockedExchange(&flag, 0);
+}
+
+static bool IsStale(const SigNet::SigNetAtomicFlag& flag)
+{
+    return InterlockedCompareExchange(const_cast<SigNet::SigNetAtomicFlag*>(&flag), 0, 0) != 0;
 }
 
 static void SetLabelsTransparentRecursive(TWinControl* root)
@@ -1621,58 +1638,58 @@ bool TFormSigNetNode::StoreBlobFromBytes(SigNet::TidDataBlob& blob,
 void TFormSigNetNode::MarkBlobStale(SigNet::TidDataBlob& blob)
 {
     if (SigNet::Node::IsTidWriteOnly(blob.tid)) {
-        blob.manager_is_stale = false;
+        ClearStale(blob.manager_is_stale);
         return;
     }
-    blob.manager_is_stale = true;
+    MarkStale(blob.manager_is_stale);
 }
 
 void TFormSigNetNode::ClearAllManagerStaleFlags()
 {
-    node_user_data.root.tid_rt_supported_tids.manager_is_stale = false;
-    node_user_data.root.tid_rt_endpoint_count.manager_is_stale = false;
-    node_user_data.root.tid_rt_protocol_version.manager_is_stale = false;
-    node_user_data.root.tid_rt_firmware_version.manager_is_stale = false;
-    node_user_data.root.tid_rt_device_label.manager_is_stale = false;
-    node_user_data.root.tid_rt_mult.manager_is_stale = false;
-    node_user_data.root.tid_rt_identify.manager_is_stale = false;
-    node_user_data.root.tid_rt_status.manager_is_stale = false;
-    node_user_data.root.tid_rt_role_capability.manager_is_stale = false;
-    node_user_data.root.tid_rt_reboot.manager_is_stale = false;
-    node_user_data.root.tid_rt_model_name.manager_is_stale = false;
-    node_user_data.root.tid_rt_scope.manager_is_stale = false;
-    node_user_data.root.tid_rt_unprovision.manager_is_stale = false;
-    node_user_data.root.tid_nw_mac_address.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_mode.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_address.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_netmask.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_gateway.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_current.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_mode.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_address.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_prefix.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_gateway.manager_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_current.manager_is_stale = false;
-    node_user_data.root.tid_dg_security_event.manager_is_stale = false;
-    node_user_data.root.tid_dg_message.manager_is_stale = false;
+    ClearStale(node_user_data.root.tid_rt_supported_tids.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_endpoint_count.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_protocol_version.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_firmware_version.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_device_label.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_mult.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_identify.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_status.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_role_capability.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_reboot.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_model_name.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_scope.manager_is_stale);
+    ClearStale(node_user_data.root.tid_rt_unprovision.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_mac_address.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_mode.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_address.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_netmask.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_gateway.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_current.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_mode.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_address.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_prefix.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_gateway.manager_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_current.manager_is_stale);
+    ClearStale(node_user_data.root.tid_dg_security_event.manager_is_stale);
+    ClearStale(node_user_data.root.tid_dg_message.manager_is_stale);
 
-    node_user_data.ep1.tid_ep_universe.manager_is_stale = false;
-    node_user_data.ep1.tid_ep_label.manager_is_stale = false;
-    node_user_data.ep1.tid_ep_mult_override.manager_is_stale = false;
-    node_user_data.ep1.tid_ep_capability.manager_is_stale = false;
-    node_user_data.ep1.tid_ep_direction.manager_is_stale = false;
-    node_user_data.ep1.tid_ep_input_priority.manager_is_stale = false;
-    node_user_data.ep1.tid_ep_status.manager_is_stale = false;
-    node_user_data.ep1.tid_ep_failover.manager_is_stale = false;
-    node_user_data.ep1.tid_ep_dmx_timing.manager_is_stale = false;
-    node_user_data.ep1.tid_ep_refresh_capability.manager_is_stale = false;
-    node_user_data.ep1.tid_rdm_tod_data.manager_is_stale = false;
-    node_user_data.ep1.tid_rdm_tod_background.manager_is_stale = false;
-    node_user_data.ep1.tid_rdm_flow_control.manager_is_stale = false;
-    node_user_data.ep1.tid_dg_level_foldback.manager_is_stale = false;
-    node_user_data.ep1.tid_level.manager_is_stale = false;
-    node_user_data.ep1.tid_priority.manager_is_stale = false;
-    node_user_data.ep1.tid_sync.manager_is_stale = false;
+    ClearStale(node_user_data.ep1.tid_ep_universe.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_label.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_mult_override.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_capability.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_direction.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_input_priority.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_status.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_failover.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_dmx_timing.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_refresh_capability.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_rdm_tod_data.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_rdm_tod_background.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_rdm_flow_control.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_dg_level_foldback.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_level.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_priority.manager_is_stale);
+    ClearStale(node_user_data.ep1.tid_sync.manager_is_stale);
 }
 
 void TFormSigNetNode::InitializeNodeUserDataFromUI()
@@ -2105,14 +2122,14 @@ void TFormSigNetNode::HandleSetRequest(uint16_t tid, const uint8_t* value, uint1
     }
 
     if (from_manager) {
-        blob->manager_is_stale = false;
-        blob->ui_is_stale = true;  // SyncUIFromStaleBlobs() will apply the change on the next timer tick
+        ClearStale(blob->manager_is_stale);
+        MarkStale(blob->ui_is_stale);  // SyncUIFromStaleBlobs() will apply the change on the next timer tick
     } else {
         MarkBlobStale(*blob);
     }
 
     LogMessage(String().sprintf(L"SET applied for TID 0x%04X (len=%u)", tid, length) +
-               (blob->manager_is_stale ? " [stale=true]" : " [stale=false]"));
+               (IsStale(blob->manager_is_stale) ? " [stale=true]" : " [stale=false]"));
 }
 
 bool TFormSigNetNode::SendProactiveResponse(const String& reason)
@@ -2366,7 +2383,7 @@ bool TFormSigNetNode::SendStaleResponseForEndpoint(uint16_t reply_endpoint, cons
     int i;
     for (i = 0; i < send_blob_count; ++i) {
         SigNet::TidDataBlob* blob = send_blobs[i];
-        if (!blob || !blob->manager_is_stale) {
+        if (!blob || !IsStale(blob->manager_is_stale)) {
             continue;
         }
         if (SigNet::Node::IsTidWriteOnly(blob->tid)) {
@@ -2722,7 +2739,7 @@ void TFormSigNetNode::ProcessIncomingPacket(const uint8_t* packet, uint16_t pack
                                        level_data,
                                        slot_count,
                                        SigNet::TID_BLOB_BYTES);
-                    node_user_data.ep1.tid_level.ui_is_stale = true;
+                    MarkStale(node_user_data.ep1.tid_level.ui_is_stale);
                 }
                 break;
             }
@@ -2775,50 +2792,50 @@ void TFormSigNetNode::UpdateStatusDisplay()
 
 void TFormSigNetNode::ClearAllUIStaleFlags()
 {
-    node_user_data.root.tid_rt_supported_tids.ui_is_stale = false;
-    node_user_data.root.tid_rt_endpoint_count.ui_is_stale = false;
-    node_user_data.root.tid_rt_protocol_version.ui_is_stale = false;
-    node_user_data.root.tid_rt_firmware_version.ui_is_stale = false;
-    node_user_data.root.tid_rt_device_label.ui_is_stale = false;
-    node_user_data.root.tid_rt_mult.ui_is_stale = false;
-    node_user_data.root.tid_rt_identify.ui_is_stale = false;
-    node_user_data.root.tid_rt_status.ui_is_stale = false;
-    node_user_data.root.tid_rt_role_capability.ui_is_stale = false;
-    node_user_data.root.tid_rt_reboot.ui_is_stale = false;
-    node_user_data.root.tid_rt_model_name.ui_is_stale = false;
-    node_user_data.root.tid_rt_scope.ui_is_stale = false;
-    node_user_data.root.tid_rt_unprovision.ui_is_stale = false;
-    node_user_data.root.tid_nw_mac_address.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_mode.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_address.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_netmask.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_gateway.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv4_current.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_mode.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_address.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_prefix.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_gateway.ui_is_stale = false;
-    node_user_data.root.tid_nw_ipv6_current.ui_is_stale = false;
-    node_user_data.root.tid_dg_security_event.ui_is_stale = false;
-    node_user_data.root.tid_dg_message.ui_is_stale = false;
+    ClearStale(node_user_data.root.tid_rt_supported_tids.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_endpoint_count.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_protocol_version.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_firmware_version.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_device_label.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_mult.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_identify.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_status.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_role_capability.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_reboot.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_model_name.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_scope.ui_is_stale);
+    ClearStale(node_user_data.root.tid_rt_unprovision.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_mac_address.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_mode.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_address.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_netmask.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_gateway.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv4_current.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_mode.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_address.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_prefix.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_gateway.ui_is_stale);
+    ClearStale(node_user_data.root.tid_nw_ipv6_current.ui_is_stale);
+    ClearStale(node_user_data.root.tid_dg_security_event.ui_is_stale);
+    ClearStale(node_user_data.root.tid_dg_message.ui_is_stale);
 
-    node_user_data.ep1.tid_ep_universe.ui_is_stale = false;
-    node_user_data.ep1.tid_ep_label.ui_is_stale = false;
-    node_user_data.ep1.tid_ep_mult_override.ui_is_stale = false;
-    node_user_data.ep1.tid_ep_capability.ui_is_stale = false;
-    node_user_data.ep1.tid_ep_direction.ui_is_stale = false;
-    node_user_data.ep1.tid_ep_input_priority.ui_is_stale = false;
-    node_user_data.ep1.tid_ep_status.ui_is_stale = false;
-    node_user_data.ep1.tid_ep_failover.ui_is_stale = false;
-    node_user_data.ep1.tid_ep_dmx_timing.ui_is_stale = false;
-    node_user_data.ep1.tid_ep_refresh_capability.ui_is_stale = false;
-    node_user_data.ep1.tid_rdm_tod_data.ui_is_stale = false;
-    node_user_data.ep1.tid_rdm_tod_background.ui_is_stale = false;
-    node_user_data.ep1.tid_rdm_flow_control.ui_is_stale = false;
-    node_user_data.ep1.tid_dg_level_foldback.ui_is_stale = false;
-    node_user_data.ep1.tid_level.ui_is_stale = false;
-    node_user_data.ep1.tid_priority.ui_is_stale = false;
-    node_user_data.ep1.tid_sync.ui_is_stale = false;
+    ClearStale(node_user_data.ep1.tid_ep_universe.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_label.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_mult_override.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_capability.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_direction.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_input_priority.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_status.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_failover.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_dmx_timing.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_ep_refresh_capability.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_rdm_tod_data.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_rdm_tod_background.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_rdm_flow_control.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_dg_level_foldback.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_level.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_priority.ui_is_stale);
+    ClearStale(node_user_data.ep1.tid_sync.ui_is_stale);
 }
 //---------------------------------------------------------------------------
 
@@ -2832,27 +2849,27 @@ void TFormSigNetNode::SyncUIFromStaleBlobs()
 {
     suppress_ui_change_events = true;
 
-    if (node_user_data.root.tid_rt_device_label.ui_is_stale) {
+    if (IsStale(node_user_data.root.tid_rt_device_label.ui_is_stale)) {
         EditRootDeviceLabel->Text = String((const char*)node_user_data.root.tid_rt_device_label.data.text);
-        node_user_data.root.tid_rt_device_label.ui_is_stale = false;
+        ClearStale(node_user_data.root.tid_rt_device_label.ui_is_stale);
     }
 
-    if (node_user_data.root.tid_rt_identify.ui_is_stale) {
+    if (IsStale(node_user_data.root.tid_rt_identify.ui_is_stale)) {
         if (node_user_data.root.tid_rt_identify.length > 0) {
             int idx = node_user_data.root.tid_rt_identify.data.bytes[0] & 0x03;
             ComboRootIdentify->ItemIndex = idx;
         }
-        node_user_data.root.tid_rt_identify.ui_is_stale = false;
+        ClearStale(node_user_data.root.tid_rt_identify.ui_is_stale);
     }
 
-    if (node_user_data.root.tid_rt_scope.ui_is_stale) {
+    if (IsStale(node_user_data.root.tid_rt_scope.ui_is_stale)) {
         if (node_user_data.root.tid_rt_scope.length > 0) {
             EditScope->Text = String((const char*)node_user_data.root.tid_rt_scope.data.text);
         }
-        node_user_data.root.tid_rt_scope.ui_is_stale = false;
+        ClearStale(node_user_data.root.tid_rt_scope.ui_is_stale);
     }
 
-    if (node_user_data.ep1.tid_ep_universe.ui_is_stale) {
+    if (IsStale(node_user_data.ep1.tid_ep_universe.ui_is_stale)) {
         if (node_user_data.ep1.tid_ep_universe.length >= 2) {
             uint16_t universe = ((uint16_t)node_user_data.ep1.tid_ep_universe.data.bytes[0] << 8) |
                                   node_user_data.ep1.tid_ep_universe.data.bytes[1];
@@ -2861,24 +2878,24 @@ void TFormSigNetNode::SyncUIFromStaleBlobs()
                 RefreshReceiverGroups();
             }
         }
-        node_user_data.ep1.tid_ep_universe.ui_is_stale = false;
+        ClearStale(node_user_data.ep1.tid_ep_universe.ui_is_stale);
     }
 
-    if (node_user_data.ep1.tid_ep_label.ui_is_stale) {
+    if (IsStale(node_user_data.ep1.tid_ep_label.ui_is_stale)) {
         EditEP1Label->Text = String((const char*)node_user_data.ep1.tid_ep_label.data.text);
-        node_user_data.ep1.tid_ep_label.ui_is_stale = false;
+        ClearStale(node_user_data.ep1.tid_ep_label.ui_is_stale);
     }
 
-    if (node_user_data.ep1.tid_ep_direction.ui_is_stale) {
+    if (IsStale(node_user_data.ep1.tid_ep_direction.ui_is_stale)) {
         if (node_user_data.ep1.tid_ep_direction.length > 0) {
             int dir = node_user_data.ep1.tid_ep_direction.data.bytes[0] & 0x03;
             ComboEP1Direction->ItemIndex = dir;
             CBEp1RdmEnable->Checked = (node_user_data.ep1.tid_ep_direction.data.bytes[0] & SigNet::EP_DIR_RDM_ENABLE) != 0;
         }
-        node_user_data.ep1.tid_ep_direction.ui_is_stale = false;
+        ClearStale(node_user_data.ep1.tid_ep_direction.ui_is_stale);
     }
 
-    if (node_user_data.ep1.tid_ep_failover.ui_is_stale) {
+    if (IsStale(node_user_data.ep1.tid_ep_failover.ui_is_stale)) {
         if (node_user_data.ep1.tid_ep_failover.length >= 3) {
             int mode = node_user_data.ep1.tid_ep_failover.data.bytes[0] & 0x07;
             ComboEP1Failover->ItemIndex = mode;
@@ -2891,20 +2908,20 @@ void TFormSigNetNode::SyncUIFromStaleBlobs()
             }
             UpdateFailoverSceneVisibility();
         }
-        node_user_data.ep1.tid_ep_failover.ui_is_stale = false;
+        ClearStale(node_user_data.ep1.tid_ep_failover.ui_is_stale);
     }
 
-    if (node_user_data.ep1.tid_rdm_tod_background.ui_is_stale) {
+    if (IsStale(node_user_data.ep1.tid_rdm_tod_background.ui_is_stale)) {
         if (node_user_data.ep1.tid_rdm_tod_background.length > 0) {
             CBEp1RdmEnable->Checked = (node_user_data.ep1.tid_rdm_tod_background.data.bytes[0] != 0);
         }
-        node_user_data.ep1.tid_rdm_tod_background.ui_is_stale = false;
+        ClearStale(node_user_data.ep1.tid_rdm_tod_background.ui_is_stale);
     }
 
-    if (node_user_data.ep1.tid_level.ui_is_stale) {
+    if (IsStale(node_user_data.ep1.tid_level.ui_is_stale)) {
         UpdateEP1LevelPreview(node_user_data.ep1.tid_level.data.bytes,
                                node_user_data.ep1.tid_level.length);
-        node_user_data.ep1.tid_level.ui_is_stale = false;
+        ClearStale(node_user_data.ep1.tid_level.ui_is_stale);
     }
 
     suppress_ui_change_events = false;
@@ -2979,10 +2996,10 @@ void TFormSigNetNode::SendStaleTIDsToManager()
     bool data_stale = false;
 
     for (i = 0; i < ROOT_BLOB_COUNT; ++i) {
-        root_stale = root_stale || root_blobs[i]->manager_is_stale;
+        root_stale = root_stale || IsStale(root_blobs[i]->manager_is_stale);
     }
     for (i = 0; i < EP1_BLOB_COUNT; ++i) {
-        data_stale = data_stale || ep1_blobs[i]->manager_is_stale;
+        data_stale = data_stale || IsStale(ep1_blobs[i]->manager_is_stale);
     }
 
     bool all_sent = true;
