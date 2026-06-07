@@ -589,7 +589,7 @@ bool TFormSigNetTx::SendPacket()
     // Calculate multicast address
     char multicast_ip[32];  // Larger buffer for safety
     memset(multicast_ip, 0, sizeof(multicast_ip));
-    SigNet::CalculateMulticastAddress(universe, multicast_ip);
+    SigNet::CalculateMulticastAddress(universe, multicast_ip, sizeof(multicast_ip));
 
     bool transmit_success = true;
 

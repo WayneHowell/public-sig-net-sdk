@@ -370,7 +370,7 @@ inline void RefreshReceiverGroups(SOCKET udp_socket,
 
     char desired_ip[16];
     desired_ip[0] = 0;
-    if (SigNet::CalculateMulticastAddress(ep1_universe, desired_ip) != SigNet::SIGNET_SUCCESS) {
+    if (SigNet::CalculateMulticastAddress(ep1_universe, desired_ip, sizeof(desired_ip)) != SigNet::SIGNET_SUCCESS) {
         return;
     }
 

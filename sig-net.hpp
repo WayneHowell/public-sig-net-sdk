@@ -65,7 +65,7 @@
 //
 //   // 4. Get multicast address
 //   char multicast_ip[16];
-//   CalculateMulticastAddress(universe, multicast_ip);
+//   CalculateMulticastAddress(universe, multicast_ip, sizeof(multicast_ip));
 //
 //   // 5. Send via UDP (using your UDP component)
 //   if (result == SIGNET_SUCCESS) {
