@@ -93,15 +93,51 @@ static bool CryptoEnsureInit() {
 }
 #endif
 
+#ifdef _WIN32
+// Cached once for the process so each HMAC call skips the kernel-transition
+// open/close pair. Leaked at exit; Windows reclaims it. Published via
+// interlocked CAS so two first-callers cannot race a second provider open
+// into a leak.
+static BCRYPT_ALG_HANDLE g_hAlgSha256 = NULL;
+
+static BCRYPT_ALG_HANDLE GetSha256AlgHandle() {
+    BCRYPT_ALG_HANDLE existing = (BCRYPT_ALG_HANDLE)InterlockedCompareExchangePointer(
+        (PVOID volatile*)&g_hAlgSha256, NULL, NULL);
+    if (existing) {
+        return existing;
+    }
+
+    BCRYPT_ALG_HANDLE fresh = NULL;
+    NTSTATUS s = BCryptOpenAlgorithmProvider(
+        &fresh,
+        BCRYPT_SHA256_ALGORITHM,
+        NULL,
+        BCRYPT_ALG_HANDLE_HMAC_FLAG
+    );
+    if (!BCRYPT_SUCCESS(s)) {
+        return NULL;
+    }
+
+    PVOID prev = InterlockedCompareExchangePointer(
+        (PVOID volatile*)&g_hAlgSha256, fresh, NULL);
+    if (prev) {
+        // Lost the publish race; keep the winner's handle.
+        BCryptCloseAlgorithmProvider(fresh, 0);
+        return (BCRYPT_ALG_HANDLE)prev;
+    }
+    return fresh;
+}
+#endif
+
 inline bool CryptoRandom(uint8_t* p, size_t len) {
 #ifdef _WIN32
     NTSTATUS status = BCryptGenRandom(
         NULL,
-        random_bytes,
-        PASSPHRASE_GENERATED_LENGTH,
+        p,
+        (ULONG)len,
         BCRYPT_USE_SYSTEM_PREFERRED_RNG
     );
-    
+
     return BCRYPT_SUCCESS(status);
 #elif defined(USE_MBEDTLS)
     if (!CryptoEnsureInit()) {
@@ -127,6 +163,7 @@ int32_t HMAC_SHA256(
         return SIGNET_ERROR_INVALID_ARG;
     }
 
+#ifdef _WIN32
     BCRYPT_ALG_HANDLE hAlg = GetSha256AlgHandle();
     if (!hAlg) {
         return SIGNET_ERROR_CRYPTO;
@@ -498,7 +535,8 @@ int32_t DeriveK0FromPassphrase(
     if (!passphrase || passphrase_len == 0 || !k0_output) {
         return SIGNET_ERROR_INVALID_ARG;
     }
-    
+
+#ifdef _WIN32
     BCRYPT_ALG_HANDLE hAlg = NULL;
     NTSTATUS status;
     

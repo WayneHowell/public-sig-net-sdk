@@ -239,7 +239,7 @@ void TestCoAPModule(TestSuiteResults& results) {
     
     // Test 3: URI string building
     {
-        char uri_buffer[64];
+        char uri_buffer[URI_STRING_MIN_BUFFER];
         int32_t result = CoAP::BuildURIString(517, uri_buffer, sizeof(uri_buffer));
         bool passed = (result == SIGNET_SUCCESS) && (strlen(uri_buffer) > 0);
         AddTestResult(results, "CoAP: Build URI String",
@@ -436,6 +436,10 @@ namespace {
         return -1;
     }
     bool HexDecode(const char* hex, uint8_t* out, size_t out_len) {
+        // A short or null vector string must fail cleanly, not read past the end.
+        if (!hex || !out || strlen(hex) != out_len * 2) {
+            return false;
+        }
         for (size_t i = 0; i < out_len; ++i) {
             int hi = HexNibbleVal(hex[2*i]);
             int lo = HexNibbleVal(hex[2*i + 1]);

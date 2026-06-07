@@ -21,6 +21,7 @@ struct UdpGroupState {
     bool joined_ep1_universe_group;
     char ep1_multicast_ip[16];
     uint16_t cached_ep1_universe;  // 0 = invalid
+    char ep1_join_nic_ip[16];      // nic the EP1 group was joined on
 
     UdpGroupState()
         : joined_manager_poll_group(false)
@@ -29,6 +30,7 @@ struct UdpGroupState {
         , cached_ep1_universe(0)
     {
         ep1_multicast_ip[0] = 0;
+        ep1_join_nic_ip[0] = 0;
     }
 };
 
@@ -48,6 +50,7 @@ inline void ResetUdpGroupState(UdpGroupState& groups)
     groups.joined_ep1_universe_group = false;
     groups.ep1_multicast_ip[0] = 0;
     groups.cached_ep1_universe = 0;
+    groups.ep1_join_nic_ip[0] = 0;
 }
 
 inline bool EnsureSocketInitialized(SOCKET& udp_socket,
@@ -273,7 +276,8 @@ inline bool LeaveMulticastGroup(SOCKET udp_socket,
                                 bool socket_initialized,
                                 const char* multicast_ip,
                                 UdpLogCallback log_callback,
-                                void* user_context)
+                                void* user_context,
+                                const char* joined_nic_ip = NULL)
 {
     if (!socket_initialized || udp_socket == INVALID_SOCKET || !multicast_ip) {
         return false;
@@ -283,6 +287,24 @@ inline bool LeaveMulticastGroup(SOCKET udp_socket,
     memset(&group, 0, sizeof(group));
     group.imr_multiaddr.s_addr = inet_addr(multicast_ip);
     group.imr_interface.s_addr = INADDR_ANY;
+
+    // leave on the nic the join used; fall back to INADDR_ANY like the join does
+    if (joined_nic_ip && joined_nic_ip[0] != 0 && strncmp(joined_nic_ip, "127.", 4) != 0) {
+        group.imr_interface.s_addr = inet_addr(joined_nic_ip);
+        if (setsockopt(udp_socket, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char*)&group, sizeof(group)) != SOCKET_ERROR) {
+            char msg[128];
+            sprintf(msg, "Left multicast %s", multicast_ip);
+            EmitUdpLog(log_callback, user_context, false, msg);
+            return true;
+        }
+        {
+            char msg[192];
+            sprintf(msg, "Leave multicast %s failed on NIC %s (WSA %d); retrying with INADDR_ANY",
+                    multicast_ip, joined_nic_ip, WSAGetLastError());
+            EmitUdpLog(log_callback, user_context, false, msg);
+        }
+        group.imr_interface.s_addr = INADDR_ANY;
+    }
 
     if (setsockopt(udp_socket, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char*)&group, sizeof(group)) == SOCKET_ERROR) {
         char msg[160];
@@ -313,7 +335,7 @@ inline void LeaveAllReceiverGroups(SOCKET udp_socket,
             LeaveMulticastGroup(udp_socket, socket_initialized, SigNet::MULTICAST_MANAGER_SEND_IP, log_callback, user_context);
         }
         if (groups.joined_ep1_universe_group && groups.ep1_multicast_ip[0] != 0) {
-            LeaveMulticastGroup(udp_socket, socket_initialized, groups.ep1_multicast_ip, log_callback, user_context);
+            LeaveMulticastGroup(udp_socket, socket_initialized, groups.ep1_multicast_ip, log_callback, user_context, groups.ep1_join_nic_ip);
         }
     }
 
@@ -360,23 +382,29 @@ inline void RefreshReceiverGroups(SOCKET udp_socket,
                                                     : "Manager send group status: not joined");
     }
 
-    // Same universe as last refresh — skip the IP recompute.
+    const char* nic_for_cache = selected_nic_ip ? selected_nic_ip : "";
+
+    // same universe on the same nic as last refresh — nothing to do
     if (groups.joined_ep1_universe_group &&
         ep1_universe == groups.cached_ep1_universe &&
-        ep1_universe != 0)
+        ep1_universe != 0 &&
+        strcmp(groups.ep1_join_nic_ip, nic_for_cache) == 0)
     {
         return;
     }
 
     char desired_ip[16];
     desired_ip[0] = 0;
-    if (SigNet::CalculateMulticastAddress(ep1_universe, desired_ip) != SigNet::SIGNET_SUCCESS) {
+    if (SigNet::CalculateMulticastAddress(ep1_universe, desired_ip, sizeof(desired_ip)) != SigNet::SIGNET_SUCCESS) {
         return;
     }
 
-    if (!groups.joined_ep1_universe_group || strcmp(groups.ep1_multicast_ip, desired_ip) != 0) {
+    bool nic_changed = groups.joined_ep1_universe_group &&
+                       strcmp(groups.ep1_join_nic_ip, nic_for_cache) != 0;
+
+    if (!groups.joined_ep1_universe_group || nic_changed || strcmp(groups.ep1_multicast_ip, desired_ip) != 0) {
         if (groups.joined_ep1_universe_group && groups.ep1_multicast_ip[0] != 0) {
-            LeaveMulticastGroup(udp_socket, socket_initialized, groups.ep1_multicast_ip, log_callback, user_context);
+            LeaveMulticastGroup(udp_socket, socket_initialized, groups.ep1_multicast_ip, log_callback, user_context, groups.ep1_join_nic_ip);
             groups.joined_ep1_universe_group = false;
         }
 
@@ -390,6 +418,8 @@ inline void RefreshReceiverGroups(SOCKET udp_socket,
             groups.ep1_multicast_ip[sizeof(groups.ep1_multicast_ip) - 1] = 0;
             groups.joined_ep1_universe_group = true;
             groups.cached_ep1_universe = ep1_universe;
+            strncpy(groups.ep1_join_nic_ip, nic_for_cache, sizeof(groups.ep1_join_nic_ip) - 1);
+            groups.ep1_join_nic_ip[sizeof(groups.ep1_join_nic_ip) - 1] = 0;
 
             char msg[128];
             sprintf(msg, "EP1 universe group status: joined %s", desired_ip);

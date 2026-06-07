@@ -134,7 +134,9 @@ enum TidBlobValueType {
 
 static const uint16_t TID_BLOB_MAX_BYTES = 512;
 
-// 32-bit volatile flag for cross-thread (UI / RX) writes; aligned long is atomic on x86.
+// 32-bit staleness flag. volatile alone is not a cross-thread guarantee in
+// C++; access from more than one thread must go through interlocked or atomic
+// operations (see MarkStale / ClearStale / IsStale in the node example app).
 typedef volatile long SigNetAtomicFlag;
 
 struct TidDataBlob {

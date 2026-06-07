@@ -146,7 +146,7 @@ int32_t result = BuildDMXPacket(
     dmx_data,
     512,          // slot count
     tuid,
-    0,            // endpoint
+    1,            // endpoint
     0x0000,       // manufacturer code (0 = standard)
     session_id,
     seq_num,
@@ -156,7 +156,7 @@ int32_t result = BuildDMXPacket(
 
 // 4. Send via UDP multicast
 char multicast_ip[16];
-CalculateMulticastAddress(517, multicast_ip);
+CalculateMulticastAddress(517, multicast_ip, sizeof(multicast_ip));
 // → "239.254.0.18"  (formula: ((universe-1) % 100) + 1)
 
 SendMulticast(buffer, multicast_ip, SIGNET_UDP_PORT);
