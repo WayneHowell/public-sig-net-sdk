@@ -128,6 +128,7 @@ int32_t HMAC_SHA256(
         return SIGNET_ERROR_INVALID_ARG;
     }
 
+#ifdef _WIN32
     BCRYPT_ALG_HANDLE hAlg = GetSha256AlgHandle();
     if (!hAlg) {
         return SIGNET_ERROR_CRYPTO;
