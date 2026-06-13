@@ -45,12 +45,14 @@ set(SIGNET_SOURCES
 )
 
 set(SIGNET_HEADERS
+    sig-net.hpp
     sig-net-constants.hpp
     sig-net-types.hpp
     sig-net-coap.hpp
     sig-net-crypto.hpp
     sig-net-security.hpp
     sig-net-send.hpp
+    sig-net-tid-strings.hpp
     sig-net-tlv.hpp
 )
 
@@ -136,16 +138,16 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# Self-test executable
+# Self-test CLI executable
 # ---------------------------------------------------------------------------
-add_executable(sig-net-selftest
-    sig-net-self-test-cli/sig-net-selftest-main.cpp
+add_executable(sig-net-selftest-cli
+    sig-net-self-test-cli/SelfTestResultsCLI.cpp
     sig-net-selftest.cpp
     sig-net-selftest.hpp
 )
 
-target_link_libraries(sig-net-selftest PRIVATE sig-net)
+target_link_libraries(sig-net-selftest-cli PRIVATE sig-net)
 
-# Run self-test as a CTest
+# Run self-test CLI as a CTest
 enable_testing()
-add_test(NAME selftest COMMAND sig-net-selftest)
+add_test(NAME selftest COMMAND sig-net-selftest-cli)
