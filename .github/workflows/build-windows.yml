@@ -39,8 +39,10 @@ jobs:
       run: cmake --build build
     - name: List Built Files
       run: dir build\*
+    - name: List Built Debug Files
+      run: dir build\Debug\*
     - name: Test
-      run: build\sig-net-selftest-cli.exe
+      run: build\Debug\sig-net-selftest-cli.exe
     - name: List Built Files
       run: dir build\*
     - name: Upload Artifact
