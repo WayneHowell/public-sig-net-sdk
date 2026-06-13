@@ -45,12 +45,14 @@ set(SIGNET_SOURCES
 )
 
 set(SIGNET_HEADERS
+    sig-net.hpp
     sig-net-constants.hpp
     sig-net-types.hpp
     sig-net-coap.hpp
     sig-net-crypto.hpp
     sig-net-security.hpp
     sig-net-send.hpp
+    sig-net-tid-strings.hpp
     sig-net-tlv.hpp
 )
 
