@@ -34,6 +34,8 @@ jobs:
       run: cmake --build build
     - name: Test
       run: build/sig-net-selftest-cli
+    - name: List Built Files
+      run: ls -al build/*
     - name: Upload Artifact
       uses: actions/upload-artifact@v7
       with:
