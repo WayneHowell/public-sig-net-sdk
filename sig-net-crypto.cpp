@@ -98,8 +98,8 @@ inline bool CryptoRandom(uint8_t* p, size_t len) {
 #ifdef _WIN32
     NTSTATUS status = BCryptGenRandom(
         NULL,
-        random_bytes,
-        PASSPHRASE_GENERATED_LENGTH,
+        p,
+        len,
         BCRYPT_USE_SYSTEM_PREFERRED_RNG
     );
     
