@@ -480,7 +480,7 @@ int32_t GetPassphraseValidationReport(const char* passphrase, uint32_t passphras
             status_line = "Passphrase not ready."; break;
     }
 
-    snprintf(report_output, report_size
+    snprintf(report_output, report_size,
         "Length: %d/10-64 | Classes: %d/4 (U:%s L:%s D:%s S:%s)\n"
         "No triple identical: %s | No 4-char sequence: %s\n"
         "%s",
