@@ -17,12 +17,11 @@ permissions:
 
 jobs:
   job:
-    name: build-${{ matrix.os }}-${{ matrix.arch }}
+    name: build-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        arch: [x86, x64]
+        os: [ubuntu-latest, ubuntu-24.04-arm]
 
     steps:
     - name: Checkout
@@ -38,7 +37,7 @@ jobs:
     - name: Upload Artifact
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.os }}-${{ matrix.arch }}
+        name: ${{ matrix.os }}
         path: |
           build/*
 #    - name: Setup TMate Session (Failure Only)
