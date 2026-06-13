@@ -1,6 +1,6 @@
 # Github Actions configuration file
 # Build for Windows
-name: Build
+name: Build Windows
 
 on:
   push:

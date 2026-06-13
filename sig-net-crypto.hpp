@@ -37,6 +37,10 @@
 #include "sig-net-types.hpp"
 #include <stdint.h>
 
+#ifdef _WIN32
+  #include <windows.h>
+#endif
+
 namespace SigNet {
 
 //------------------------------------------------------------------------------
