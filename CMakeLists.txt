@@ -136,7 +136,7 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# Self-test executable
+# Self-test CLI executable
 # ---------------------------------------------------------------------------
 add_executable(sig-net-selftest-cli
     sig-net-self-test-cli/SelfTestResultsCLI.cpp
@@ -144,8 +144,8 @@ add_executable(sig-net-selftest-cli
     sig-net-selftest.hpp
 )
 
-target_link_libraries(sig-net-selftest PRIVATE sig-net)
+target_link_libraries(sig-net-selftest-cli PRIVATE sig-net)
 
-# Run self-test as a CTest
+# Run self-test CLI as a CTest
 enable_testing()
-add_test(NAME selftest COMMAND sig-net-selftest)
+add_test(NAME selftest COMMAND sig-net-selftest-cli)
