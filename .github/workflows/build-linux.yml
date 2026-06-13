@@ -33,8 +33,14 @@ jobs:
       run: cmake -B build
     - name: Build
       run: cmake --build build
+    - name: Root
+      run: ls
+    - name: CMake Folder
+      run: ls CMakeFiles/
+    - name: Prog Folder
+      run: ls CMakeFiles/sig-net-selftest-cli.dir/
     - name: Test
-      run: build/sig-net-selftest
+      run: CMakeFiles/sig-net-selftest-cli.dir/sig-net-selftest-cli
     - name: Upload Artifact
       uses: actions/upload-artifact@v7
       with:
