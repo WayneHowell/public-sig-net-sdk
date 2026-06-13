@@ -34,9 +34,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <winsock2.h>
-#endif
+// Note: No platform-specific socket headers needed in this module.
+// Multicast address formatting uses sprintf directly.
+// Network byte order encoding is handled by PacketBuffer::WriteUInt16/32.
 
 namespace SigNet {
 
