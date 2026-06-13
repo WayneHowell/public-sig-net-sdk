@@ -42,6 +42,10 @@ jobs:
         name: ${{ matrix.os }}
         path: |
           build/*
+          !build/CMakeCache.txt
+          !build/Makefile*
+          !build/*.cmake
+          !build/CMakeFiles/*
 #    - name: Setup TMate Session (Failure Only)
 #      if: ${{ failure() }}
 #      uses: mxschmitt/action-tmate@v3
