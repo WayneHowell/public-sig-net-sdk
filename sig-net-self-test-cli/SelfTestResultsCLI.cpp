@@ -3,7 +3,7 @@
 //==============================================================================
 
 // Include Sig-Net library
-#include "..\sig-net.hpp"
+#include "../sig-net.hpp"
 #include <stdio.h>
 
 int main() {
