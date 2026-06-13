@@ -34,13 +34,15 @@ jobs:
     - name: Build
       run: cmake --build build
     - name: Root
-      run: ls
+      run: ls -al
+    - name: Build Folder
+      run: ls -al build/
     - name: CMake Folder
-      run: ls CMakeFiles/
+      run: ls -al build/CMakeFiles/
     - name: Prog Folder
-      run: ls CMakeFiles/sig-net-selftest-cli.dir/
+      run: ls -al build/CMakeFiles/sig-net-selftest-cli.dir/
     - name: Test
-      run: CMakeFiles/sig-net-selftest-cli.dir/sig-net-selftest-cli
+      run: build/sig-net-selftest-cli
     - name: Upload Artifact
       uses: actions/upload-artifact@v7
       with:
