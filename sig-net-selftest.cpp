@@ -239,7 +239,7 @@ void TestCoAPModule(TestSuiteResults& results) {
     
     // Test 3: URI string building
     {
-        char uri_buffer[64];
+        char uri_buffer[URI_STRING_MIN_BUFFER];
         int32_t result = CoAP::BuildURIString(517, uri_buffer, sizeof(uri_buffer));
         bool passed = (result == SIGNET_SUCCESS) && (strlen(uri_buffer) > 0);
         AddTestResult(results, "CoAP: Build URI String",
@@ -345,7 +345,7 @@ void TestTLVModule(TestSuiteResults& results) {
         const char* fw_ver = "v1.0.0";
         
         int32_t result = TLV::BuildStartupAnnouncePayload(
-            payload, tuid, 0x534C, 0, 0x0100BC, fw_ver, 1, 0x01, 0);
+            payload, tuid, 0x534C, 0, (uint16_t)0x0100BC, fw_ver, 1, 0x01, 0);
         
         bool passed = (result == SIGNET_SUCCESS) && (payload.GetSize() > 0);
         AddTestResult(results, "TLV: Build Announce Payload",

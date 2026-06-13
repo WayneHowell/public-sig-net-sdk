@@ -34,9 +34,11 @@
 #include <stdio.h>
 #include <string.h>
 
-// Windows Sockets for network byte order functions (htons, htonl)
+// Network byte order functions (htons, htonl)
 #ifdef _WIN32
-#include <winsock2.h>
+  #include <winsock2.h>
+#else
+  #include <arpa/inet.h>
 #endif
 
 namespace SigNet {
