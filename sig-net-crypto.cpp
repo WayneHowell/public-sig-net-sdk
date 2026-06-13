@@ -506,6 +506,7 @@ int32_t DeriveK0FromPassphrase(
         return SIGNET_ERROR_INVALID_ARG;
     }
     
+#ifdef _WIN32
     BCRYPT_ALG_HANDLE hAlg = NULL;
     NTSTATUS status;
     
