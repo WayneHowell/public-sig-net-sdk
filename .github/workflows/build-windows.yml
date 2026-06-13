@@ -37,20 +37,22 @@ jobs:
       run: cmake -B build
     - name: Build
       run: cmake --build build
-    - name: Test
-      run: build/sig-net-selftest-cli.exe
     - name: List Built Files
-      run: dir build/*
+      run: dir build\*
+    - name: Test
+      run: build\sig-net-selftest-cli.exe
+    - name: List Built Files
+      run: dir build\*
     - name: Upload Artifact
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.os }}
+        name: ${{ matrix.os }}-${{ matrix.arch }}
         path: |
-          build/*
-          !build/CMakeCache.txt
-          !build/Makefile*
-          !build/*.cmake
-          !build/CMakeFiles/*
+          build\*
+          !build\CMakeCache.txt
+          !build\Makefile*
+          !build\*.cmake
+          !build\CMakeFiles/*
 #    - name: Setup TMate Session (Failure Only)
 #      if: ${{ failure() }}
 #      uses: mxschmitt/action-tmate@v3
