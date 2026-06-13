@@ -23,6 +23,12 @@
 #include <Vcl.ExtCtrls.hpp>
 #include <winsock2.h>
 #include <iphlpapi.h>
+
+namespace SigNet {
+// Selects default startup NIC with preference: 2.x.x.x, then 192.x.x.x,
+// then first physical NIC. Falls back to loopback if none are available.
+AnsiString SelectDefaultStartupNicIP();
+}
 //---------------------------------------------------------------------------
 class TNicSelectDialog : public TForm
 {

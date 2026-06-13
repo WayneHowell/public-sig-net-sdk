@@ -34,6 +34,9 @@
 #include "sig-net-parse.hpp"
 #include "sig-net-security.hpp"
 #include "sig-net-crypto.hpp"
+#include "sig-net-coap.hpp"
+#include <ctype.h>
+#include <stdlib.h>
 #include <string.h>
 
 namespace SigNet {
@@ -93,6 +96,14 @@ bool PacketReader::Skip(uint16_t count) {
         return false;
     }
     position_ += count;
+    return true;
+}
+
+bool PacketReader::Seek(uint16_t new_position) {
+    if (new_position > size_) {
+        return false;
+    }
+    position_ = new_position;
     return true;
 }
 
@@ -204,13 +215,23 @@ int32_t ParseCoAPOption(
         if (!reader.ReadUInt16(length_ext)) {
             return SIGNET_ERROR_BUFFER_TOO_SMALL;
         }
-        length = 269 + length_ext;
+        // 269 + 0xFFFF wraps uint16_t — widen, bound, then narrow.
+        uint32_t full = 269u + length_ext;
+        if (full > MAX_UDP_PAYLOAD) {
+            return SIGNET_ERROR_INVALID_PACKET;
+        }
+        length = static_cast<uint16_t>(full);
     }
     else if (length == 15) {
         // Reserved
         return SIGNET_ERROR_INVALID_PACKET;
     }
-    
+
+    // Sig-Net options never exceed MAX_UDP_PAYLOAD; bound regardless of encoding.
+    if (length > MAX_UDP_PAYLOAD) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
     // Calculate absolute option number
     option_num = prev_option + delta;
     option_length = length;
@@ -250,21 +271,24 @@ int32_t ExtractURIString(
     bool first_segment = true;
     
     while (true) {
+        // Snapshot so we can rewind a non-Uri-Path option for the next phase.
+        uint16_t option_start_pos = reader.GetPosition();
+
         uint16_t option_num;
         const uint8_t* option_value;
         uint16_t option_length;
-        
+
         int32_t result = ParseCoAPOption(reader, current_option, option_num, option_value, option_length);
-        
+
         if (result == SIGNET_ERROR_INVALID_PACKET) {
             // Hit payload marker or end of options
             break;
         }
-        
+
         if (result != SIGNET_SUCCESS) {
             return result;
         }
-        
+
         // Check if this is a Uri-Path option (11)
         if (option_num == COAP_OPTION_URI_PATH) {
             // Add separator between segments (but not before first)
@@ -275,7 +299,7 @@ int32_t ExtractURIString(
                 uri_string[uri_pos++] = '/';
             }
             first_segment = false;
-            
+
             // Copy segment
             if (uri_pos + option_length > uri_buffer_size) {
                 return SIGNET_ERROR_BUFFER_FULL;
@@ -284,12 +308,10 @@ int32_t ExtractURIString(
             uri_pos += option_length;
         }
         else if (option_num > COAP_OPTION_URI_PATH) {
-            // Past Uri-Path options, need to rewind for next phase
-            // This is tricky - we'll handle it by stopping and letting
-            // ParseSigNetOptions re-parse from the beginning
+            reader.Seek(option_start_pos);   // hand the option to the next phase
             break;
         }
-        
+
         current_option = option_num;
     }
     
@@ -308,12 +330,11 @@ int32_t ExtractURIString(
 //------------------------------------------------------------------------------
 int32_t ParseSigNetOptions(
     PacketReader& reader,
-    SigNetOptions& options
+    SigNetOptions& options,
+    uint16_t initial_prev_option
 ) {
-    // This function expects reader to be positioned after CoAP header + token,
-    // and will parse through Uri-Path options to find SigNet custom options
-    
-    uint16_t current_option = 0;
+    // 0 if starting fresh; COAP_OPTION_URI_PATH if chained after ExtractURIString.
+    uint16_t current_option = initial_prev_option;
     bool found_security_mode = false;
     bool found_sender_id = false;
     bool found_mfg_code = false;
@@ -462,6 +483,208 @@ int32_t ParseTID_LEVEL(
     return SIGNET_SUCCESS;
 }
 
+static bool IsSpaceChar(char ch)
+{
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+}
+
+static bool IsHexChar(char ch)
+{
+    return (ch >= '0' && ch <= '9') ||
+           (ch >= 'a' && ch <= 'f') ||
+           (ch >= 'A' && ch <= 'F');
+}
+
+static uint8_t HexNibble(char ch)
+{
+    if (ch >= '0' && ch <= '9') {
+        return static_cast<uint8_t>(ch - '0');
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return static_cast<uint8_t>(10 + (ch - 'a'));
+    }
+    return static_cast<uint8_t>(10 + (ch - 'A'));
+}
+
+static int32_t NormalizeToken(const char* text,
+                              char* out_token,
+                              size_t& out_size,
+                              bool strip_0x_prefix)
+{
+    if (!text || !out_token || out_size < 2) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    const char* begin = text;
+    while (*begin && IsSpaceChar(*begin)) {
+        begin++;
+    }
+
+    const char* end = begin + strlen(begin);
+    while (end > begin && IsSpaceChar(*(end - 1))) {
+        end--;
+    }
+
+    if (end <= begin) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    if (strip_0x_prefix && (end - begin) >= 2 && begin[0] == '0' && (begin[1] == 'x' || begin[1] == 'X')) {
+        begin += 2;
+    }
+
+    size_t len = static_cast<size_t>(end - begin);
+    if (len == 0 || len >= out_size) {
+        return SIGNET_ERROR_BUFFER_TOO_SMALL;
+    }
+
+    out_size = len;
+
+    memcpy(out_token, begin, len);
+    out_token[len] = '\0';
+    return SIGNET_SUCCESS;
+}
+
+int32_t ParseHexBytes(const char* text, uint8_t* out_bytes, uint16_t byte_count)
+{
+    if (!text || !out_bytes || byte_count == 0) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    char token[256];
+    size_t out_size = sizeof(token);
+    int32_t norm = NormalizeToken(text, token, out_size, true);
+    if (norm != SIGNET_SUCCESS) {
+        return norm;
+    }
+
+    if (out_size != (static_cast<size_t>(byte_count) * 2U)) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    for (uint16_t i = 0; i < byte_count; i++) {
+        char hi = token[i * 2U];
+        char lo = token[i * 2U + 1U];
+        if (!IsHexChar(hi) || !IsHexChar(lo)) {
+            return SIGNET_ERROR_INVALID_ARG;
+        }
+        out_bytes[i] = static_cast<uint8_t>((HexNibble(hi) << 4) | HexNibble(lo));
+    }
+
+    return SIGNET_SUCCESS;
+}
+
+int32_t ParseK0Hex(const char* text, uint8_t out_k0[32])
+{
+    return ParseHexBytes(text, out_k0, 32);
+}
+
+int32_t ParseTUIDHex(const char* text, uint8_t out_tuid[6])
+{
+    return ParseHexBytes(text, out_tuid, 6);
+}
+
+int32_t ParseEndpointValue(const char* text, uint16_t& endpoint_out)
+{
+    char token[64];
+    size_t out_size = sizeof(token);
+    int32_t norm = NormalizeToken(text, token, out_size, false);
+    if (norm != SIGNET_SUCCESS) {
+        return norm;
+    }
+
+    char* end_ptr = 0;
+    long parsed = 0;
+    if (token[0] == '$') {
+        parsed = strtol(token + 1, &end_ptr, 16);
+    } else {
+        parsed = strtol(token, &end_ptr, 0);
+    }
+
+    if (!end_ptr || *end_ptr != '\0') {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+    if (parsed < 0 || parsed > 65535L) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    endpoint_out = static_cast<uint16_t>(parsed);
+    return SIGNET_SUCCESS;
+}
+
+int32_t ParseHexWord(const char* text, uint16_t& value_out)
+{
+    char token[64];
+    size_t out_size = sizeof(token);
+    int32_t norm = NormalizeToken(text, token, out_size, false);
+    if (norm != SIGNET_SUCCESS) {
+        return norm;
+    }
+
+    char prefixed[68];
+    const char* parse_ptr = token;
+    if (!(token[0] == '0' && (token[1] == 'x' || token[1] == 'X'))) {
+        strcpy(prefixed, "0x");
+        strncat(prefixed, token, sizeof(prefixed) - 3);
+        prefixed[sizeof(prefixed) - 1] = '\0';
+        parse_ptr = prefixed;
+    }
+
+    char* end_ptr = 0;
+    long parsed = strtol(parse_ptr, &end_ptr, 0);
+    if (!end_ptr || *end_ptr != '\0') {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+    if (parsed < 0 || parsed > 65535L) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    value_out = static_cast<uint16_t>(parsed);
+    return SIGNET_SUCCESS;
+}
+
+int32_t ValidateSigNetURI(const char* uri_string)
+{
+    if (!uri_string || uri_string[0] != '/') {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    const char* p = uri_string + 1;
+    const char* seg_end = strchr(p, '/');
+    if (!seg_end) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+    if ((size_t)(seg_end - p) != strlen(SIGNET_URI_PREFIX) ||
+        strncmp(p, SIGNET_URI_PREFIX, (size_t)(seg_end - p)) != 0) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    p = seg_end + 1;
+    seg_end = strchr(p, '/');
+    if (!seg_end) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+    if ((size_t)(seg_end - p) != strlen(SIGNET_URI_VERSION) ||
+        strncmp(p, SIGNET_URI_VERSION, (size_t)(seg_end - p)) != 0) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    p = seg_end + 1;
+    seg_end = strchr(p, '/');
+    if (!seg_end) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    const size_t scope_len = (size_t)(seg_end - p);
+    const char* configured_scope = CoAP::GetURIScope();
+    const size_t configured_len = strlen(configured_scope);
+    if (scope_len != configured_len || strncmp(p, configured_scope, scope_len) != 0) {
+        return SIGNET_ERROR_INVALID_PACKET;
+    }
+
+    return SIGNET_SUCCESS;
+}
+
 //------------------------------------------------------------------------------
 // Verify Packet HMAC
 //------------------------------------------------------------------------------
@@ -505,14 +728,11 @@ int32_t VerifyPacketHMAC(
     }
     
     // Constant-time comparison to prevent timing attacks
-    volatile uint8_t diff = 0; // volatile to prevent compiler optimizations skipping SecureZero
-    for (uint32_t i = 0; i < HMAC_SHA256_LENGTH; i++) {
+    uint8_t diff = 0;
+    for (int i = 0; i < HMAC_SHA256_LENGTH; i++) {
         diff |= (computed_hmac[i] ^ options.hmac[i]);
     }
-
-    SecureZero(hmac_input, sizeof(hmac_input));
-    SecureZero(computed_hmac, sizeof(computed_hmac));
-
+    
     if (diff != 0) {
         return SIGNET_ERROR_HMAC_FAILED;
     }

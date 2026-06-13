@@ -25,10 +25,9 @@
 //==============================================================================
 // Author:       Wayne Howell
 // Date:         March 28, 2026
-// Description:  Implementation of cryptographic functions for Sig-Net.
-//               HMAC-SHA256, HKDF-Expand, PBKDF2, and key derivation.
-//               Windows: uses BCrypt API (bcrypt.lib).
-//               POSIX:   uses OpenSSL (link with -lssl -lcrypto).
+// Description:  Implementation of cryptographic functions using Windows BCrypt.
+//               HMAC-SHA256, HKDF-Expand, and key derivation for Sig-Net.
+//               No external dependencies (uses Windows CryptoAPI).
 //==============================================================================
 
 #include "sig-net-crypto.hpp"
@@ -40,7 +39,12 @@
   #include <windows.h>
   #include <bcrypt.h>
   // Note: Link against bcrypt.lib in project settings
-#else
+#elif defined(USE_MBEDTLS)
+  #include <mbedtls/ctr_drbg.h>
+  #include <mbedtls/sha256.h>
+  #include <mbedtls/pkcs5.h>
+#elif defined(USE_OPENSSL)
+  #include <openssl/sha.h>
   #include <openssl/hmac.h>
   #include <openssl/evp.h>
   #include <openssl/rand.h>
@@ -50,6 +54,64 @@
 
 namespace SigNet {
 namespace Crypto {
+
+#if defined(USE_MBEDTLS)
+// Mbed TLS RNG state (must persist for lifetime of RNG usage)
+mbedtls_entropy_context   g_entropy;
+mbedtls_ctr_drbg_context  g_ctr_drbg;
+
+// State flags
+bool g_crypto_initialized = false;
+bool g_rng_ready = false;
+
+bool CryptoInit()
+{
+    static const char kPersonalization[] = "sig-net-sdk";
+
+    mbedtls_entropy_init(&g_entropy);
+    mbedtls_ctr_drbg_init(&g_ctr_drbg);
+
+    const int rc = mbedtls_ctr_drbg_seed(
+        &g_ctr_drbg,
+        mbedtls_entropy_func,
+        &g_entropy,
+        reinterpret_cast<const unsigned char*>(kPersonalization),
+        sizeof(kPersonalization) - 1
+    );
+
+    g_rng_ready = (rc == 0);
+    return g_rng_ready;
+}
+
+static bool CryptoEnsureInit() {
+    if (!g_crypto_initialized) [[unlikely]] {
+        if (!CryptoInit()) {
+            return false;
+        }
+    }
+    return true;
+}
+#endif
+
+inline bool CryptoRandom(uint8_t* p, size_t len) {
+#ifdef _WIN32
+    NTSTATUS status = BCryptGenRandom(
+        NULL,
+        random_bytes,
+        PASSPHRASE_GENERATED_LENGTH,
+        BCRYPT_USE_SYSTEM_PREFERRED_RNG
+    );
+    
+    return BCRYPT_SUCCESS(status);
+#elif defined(USE_MBEDTLS)
+    if (!CryptoEnsureInit()) {
+        return false;
+    }
+    return mbedtls_ctr_drbg_random(&g_ctr_drbg, p, len) == 0;
+#elif defined(USE_OPENSSL)
+    return RAND_bytes(p, len) == 1;
+#endif
+}
 
 //------------------------------------------------------------------------------
 // HMAC-SHA256 Implementation using Windows BCrypt
@@ -65,39 +127,27 @@ int32_t HMAC_SHA256(
         return SIGNET_ERROR_INVALID_ARG;
     }
 
-#ifdef _WIN32
-    BCRYPT_ALG_HANDLE hAlg = NULL;
-    BCRYPT_HASH_HANDLE hHash = NULL;
-    NTSTATUS status;
-    
-    // Open algorithm provider for HMAC-SHA256
-    status = BCryptOpenAlgorithmProvider(
-        &hAlg,
-        BCRYPT_SHA256_ALGORITHM,
-        NULL,
-        BCRYPT_ALG_HANDLE_HMAC_FLAG
-    );
-    
-    if (!BCRYPT_SUCCESS(status)) {
+    BCRYPT_ALG_HANDLE hAlg = GetSha256AlgHandle();
+    if (!hAlg) {
         return SIGNET_ERROR_CRYPTO;
     }
-    
-    // Create hash object
-    status = BCryptCreateHash(
+
+    BCRYPT_HASH_HANDLE hHash = NULL;
+
+    NTSTATUS status = BCryptCreateHash(
         hAlg,
         &hHash,
         NULL,
         0,
         (PUCHAR)key,
         key_len,
-        0
+        BCRYPT_HASH_REUSABLE_FLAG
     );
-    
+
     if (!BCRYPT_SUCCESS(status)) {
-        BCryptCloseAlgorithmProvider(hAlg, 0);
         return SIGNET_ERROR_CRYPTO;
     }
-    
+
     // Hash the message
     status = BCryptHashData(
         hHash,
@@ -105,13 +155,12 @@ int32_t HMAC_SHA256(
         msg_len,
         0
     );
-    
+
     if (!BCRYPT_SUCCESS(status)) {
         BCryptDestroyHash(hHash);
-        BCryptCloseAlgorithmProvider(hAlg, 0);
         return SIGNET_ERROR_CRYPTO;
     }
-    
+
     // Finalize hash and get result
     status = BCryptFinishHash(
         hHash,
@@ -119,13 +168,29 @@ int32_t HMAC_SHA256(
         HMAC_SHA256_LENGTH,
         0
     );
-    
-    // Cleanup
+
     BCryptDestroyHash(hHash);
-    BCryptCloseAlgorithmProvider(hAlg, 0);
-    
+
     return BCRYPT_SUCCESS(status) ? SIGNET_SUCCESS : SIGNET_ERROR_CRYPTO;
-#else
+#elif defined(USE_MBEDTLS)
+    const mbedtls_md_info_t* md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (!md) {
+        return SIGNET_ERROR_CRYPTO;
+    }
+
+    int rc = mbedtls_md_hmac(
+        md,
+        key, key_len,
+        message, msg_len,
+        output
+    );
+
+    if (rc != 0) {
+        return SIGNET_ERROR_CRYPTO;
+    }
+
+    return SIGNET_SUCCESS;
+#elif defined(USE_OPENSSL)
     unsigned int out_len = 0;
     unsigned char* result = ::HMAC(
         EVP_sha256(),
@@ -166,9 +231,7 @@ int32_t HKDF_Expand(
     hmac_input[info_len] = HKDF_COUNTER_T1;
     
     // Compute T(1) = HMAC-SHA256(PRK, info || 0x01)
-    int32_t rc = HMAC_SHA256(prk, prk_len, hmac_input, info_len + 1, output);
-    SecureZero(hmac_input, sizeof(hmac_input));
-    return rc;
+    return HMAC_SHA256(prk, prk_len, hmac_input, info_len + 1, output);
 }
 
 //------------------------------------------------------------------------------
@@ -210,31 +273,33 @@ int32_t DeriveManagerLocalKey(const uint8_t* k0, const uint8_t* tuid, uint8_t* m
     // Build info string: "SigNet-Manager-v1-{12-char-hex-TUID}"
     char info_str[40];
     strcpy(info_str, HKDF_INFO_MANAGER_LOCAL_PREFIX);
-
+    
     // Append TUID as 12-char hex string
     char tuid_hex[TUID_HEX_LENGTH + 1];
-    TUID_ToHexString(tuid, tuid_hex);
+    TUID_ToHexString(tuid, tuid_hex, sizeof(tuid_hex));
     tuid_hex[TUID_HEX_LENGTH] = '\0';
     strcat(info_str, tuid_hex);
-
-    int32_t rc = HKDF_Expand(k0, K0_KEY_LENGTH, (const uint8_t*)info_str, strlen(info_str), manager_local_key);
-    SecureZero(info_str, sizeof(info_str));
-    SecureZero(tuid_hex, sizeof(tuid_hex));
-    return rc;
+    
+    return HKDF_Expand(k0, K0_KEY_LENGTH, (const uint8_t*)info_str, strlen(info_str), manager_local_key);
 }
 
 //------------------------------------------------------------------------------
 // Utility Functions
 //------------------------------------------------------------------------------
 
-void TUID_ToHexString(const uint8_t* tuid, char* hex_string) {
-    if (!tuid || !hex_string) {
+void TUID_ToHexString(const uint8_t* tuid, char* hex_string, size_t hex_string_size) {
+    static const char hex[] = "0123456789ABCDEF";
+
+    if (!tuid || !hex_string || hex_string_size < (TUID_HEX_LENGTH + 1)) {
         return;
     }
-    
+
     for (uint32_t i = 0; i < TUID_LENGTH; i++) {
-        sprintf(hex_string + (i * 2), "%02X", tuid[i]);
+        uint8_t v = tuid[i];
+        hex_string[i * 2]     = hex[v >> 4];
+        hex_string[i * 2 + 1] = hex[v & 0x0F];
     }
+
     hex_string[TUID_HEX_LENGTH] = '\0';
 }
 
@@ -255,6 +320,42 @@ int32_t TUID_FromHexString(const char* hex_string, uint8_t* tuid) {
         tuid[i] = (uint8_t)value;
     }
     
+    return SIGNET_SUCCESS;
+}
+
+int32_t TUID_GenerateEphemeral(uint16_t mfg_code, uint8_t* tuid_out) {
+    if (!tuid_out) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    uint8_t rand_bytes[4];
+
+    if (!CryptoRandom(rand_bytes, 4)) {
+        return SIGNET_ERROR_CRYPTO;
+    }
+
+    // Assemble as big-endian uint32_t
+    uint32_t device_id = ((uint32_t)rand_bytes[0] << 24)
+                       | ((uint32_t)rand_bytes[1] << 16)
+                       | ((uint32_t)rand_bytes[2] << 8)
+                       |  (uint32_t)rand_bytes[3];
+
+    // Force MSB=1 to place in ephemeral range (0x80000000–0xFFFFFFFF)
+    device_id |= 0x80000000u;
+
+    // Clamp away from reserved range 0xFFFFFFF0–0xFFFFFFFF
+    if (device_id >= 0xFFFFFFF0u) {
+        device_id = 0xFFFFFFEFu;
+    }
+
+    // Encode: mfg_code (2 bytes big-endian) + device_id (4 bytes big-endian)
+    tuid_out[0] = (uint8_t)(mfg_code >> 8);
+    tuid_out[1] = (uint8_t)(mfg_code & 0xFF);
+    tuid_out[2] = (uint8_t)(device_id >> 24);
+    tuid_out[3] = (uint8_t)(device_id >> 16);
+    tuid_out[4] = (uint8_t)(device_id >> 8);
+    tuid_out[5] = (uint8_t)(device_id & 0xFF);
+
     return SIGNET_SUCCESS;
 }
 
@@ -372,7 +473,7 @@ int32_t GetPassphraseValidationReport(const char* passphrase, uint32_t passphras
             status_line = "Passphrase not ready."; break;
     }
 
-    snprintf(report_output, report_size,
+    sprintf(report_output,
         "Length: %d/10-64 | Classes: %d/4 (U:%s L:%s D:%s S:%s)\n"
         "No triple identical: %s | No 4-char sequence: %s\n"
         "%s",
@@ -397,8 +498,7 @@ int32_t DeriveK0FromPassphrase(
     if (!passphrase || passphrase_len == 0 || !k0_output) {
         return SIGNET_ERROR_INVALID_ARG;
     }
-
-#ifdef _WIN32
+    
     BCRYPT_ALG_HANDLE hAlg = NULL;
     NTSTATUS status;
     
@@ -432,7 +532,22 @@ int32_t DeriveK0FromPassphrase(
     if (!BCRYPT_SUCCESS(status)) {
         return SIGNET_ERROR_CRYPTO;
     }
-#else
+#elif defined(USE_MBEDTLS)
+   const int rc = mbedtls_pkcs5_pbkdf2_hmac_ext(
+        MBEDTLS_MD_SHA256,
+        reinterpret_cast<const unsigned char*>(passphrase),
+        passphrase_len,
+        reinterpret_cast<const unsigned char*>(PBKDF2_SALT),
+        strlen(PBKDF2_SALT),
+        PBKDF2_ITERATIONS,
+        K0_KEY_LENGTH,
+        k0_output
+    );
+
+    if (rc != 0) {
+        return SIGNET_ERROR_CRYPTO;
+    }
+#elif defined(USE_OPENSSL)
     int result = PKCS5_PBKDF2_HMAC(
         passphrase,
         passphrase_len,
@@ -467,24 +582,11 @@ int32_t GenerateRandomPassphrase(char* passphrase_output, uint32_t buffer_size) 
     const int digit_len = strlen(PASSPHRASE_GEN_DIGITS);
     const int symbol_len = strlen(PASSPHRASE_GEN_SYMBOLS);
     
-    // Generate random bytes
+    // Generate random bytes using BCrypt
     uint8_t random_bytes[PASSPHRASE_GENERATED_LENGTH];
-#ifdef _WIN32
-    NTSTATUS status = BCryptGenRandom(
-        NULL,
-        random_bytes,
-        PASSPHRASE_GENERATED_LENGTH,
-        BCRYPT_USE_SYSTEM_PREFERRED_RNG
-    );
-    
-    if (!BCRYPT_SUCCESS(status)) {
+    if (!CryptoRandom(random_bytes, PASSPHRASE_GENERATED_LENGTH)) {
         return SIGNET_ERROR_CRYPTO;
     }
-#else
-    if (RAND_bytes(random_bytes, PASSPHRASE_GENERATED_LENGTH) != 1) {
-        return SIGNET_ERROR_CRYPTO;
-    }
-#endif
     
     // Build passphrase ensuring at least 3 character classes
     // Force first 3 characters to be from different classes
@@ -526,8 +628,7 @@ int32_t GenerateRandomPassphrase(char* passphrase_output, uint32_t buffer_size) 
     }
 
     passphrase_output[passphrase_length] = '\0';
-    SecureZero(random_bytes, sizeof(random_bytes));
-
+    
     // Verify it passes validation (should always pass given our construction)
     int32_t validation = ValidatePassphrase(passphrase_output, passphrase_length);
     if (validation != SIGNET_PASSPHRASE_VALID) {
@@ -546,22 +647,9 @@ int32_t GenerateRandomK0(uint8_t* k0_output) {
         return SIGNET_ERROR_INVALID_ARG;
     }
 
-#ifdef _WIN32
-    NTSTATUS status = BCryptGenRandom(
-        NULL,
-        k0_output,
-        32,
-        BCRYPT_USE_SYSTEM_PREFERRED_RNG
-    );
-
-    if (!BCRYPT_SUCCESS(status)) {
+    if (!CryptoRandom(k0_output, 32)) {
         return SIGNET_ERROR_CRYPTO;
     }
-#else
-    if (RAND_bytes(k0_output, 32) != 1) {
-        return SIGNET_ERROR_CRYPTO;
-    }
-#endif
 
     return SIGNET_SUCCESS;
 }

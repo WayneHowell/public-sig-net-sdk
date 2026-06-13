@@ -26,13 +26,10 @@
 
 # RAD Studio local history folders
 **/__history/
+**/__agent_snapshots/
 
 # Keep distributable example executables tracked
 !sig-net-example-tid-level-tx/Win32/
 !sig-net-example-tid-level-tx/Win32/Debug/
 sig-net-example-tid-level-tx/Win32/Debug/*
 !sig-net-example-tid-level-tx/Win32/Debug/*.exe
-
-
-build/
-.vscode/

@@ -116,6 +116,158 @@ struct SigNetOptions {
 };
 
 //------------------------------------------------------------------------------
+// Node User Data Model (Phase 2)
+//
+// Shared storage for Root EP and EP1 TID data. Each TID uses the same blob
+// carrier and has a manager_is_stale flag that is raised when changed by UI or
+// manager traffic and cleared after proactive multicast response.
+//------------------------------------------------------------------------------
+
+enum TidBlobValueType {
+    TID_BLOB_EMPTY = 0,
+    TID_BLOB_U8,
+    TID_BLOB_U16,
+    TID_BLOB_U32,
+    TID_BLOB_TEXT,
+    TID_BLOB_BYTES
+};
+
+static const uint16_t TID_BLOB_MAX_BYTES = 512;
+
+// 32-bit volatile flag for cross-thread (UI / RX) writes; aligned long is atomic on x86.
+typedef volatile long SigNetAtomicFlag;
+
+struct TidDataBlob {
+    uint16_t tid;
+    uint16_t length;
+    uint8_t value_type;
+    SigNetAtomicFlag manager_is_stale;  // Set when UI changes the value; cleared after proactive TX
+    SigNetAtomicFlag ui_is_stale;       // Set when Sig-Net SET updates the value; cleared after UI sync
+    union {
+        uint8_t u8;
+        uint16_t u16;
+        uint32_t u32;
+        char text[TID_BLOB_MAX_BYTES + 1];
+        uint8_t bytes[TID_BLOB_MAX_BYTES];
+    } data;
+
+    TidDataBlob() : tid(0), length(0), value_type(TID_BLOB_EMPTY),
+                    manager_is_stale(0), ui_is_stale(0) {
+        memset(data.bytes, 0, sizeof(data.bytes));
+        data.text[0] = 0;
+    }
+};
+
+struct RootTidStore {
+    TidDataBlob tid_rt_supported_tids;
+    TidDataBlob tid_rt_endpoint_count;
+    TidDataBlob tid_rt_protocol_version;
+    TidDataBlob tid_rt_firmware_version;
+    TidDataBlob tid_rt_device_label;
+    TidDataBlob tid_rt_mult;
+    TidDataBlob tid_rt_identify;
+    TidDataBlob tid_rt_status;
+    TidDataBlob tid_rt_role_capability;
+    TidDataBlob tid_rt_reboot;
+    TidDataBlob tid_rt_model_name;
+    TidDataBlob tid_rt_scope;
+    TidDataBlob tid_rt_unprovision;
+
+    TidDataBlob tid_nw_mac_address;
+    TidDataBlob tid_nw_ipv4_mode;
+    TidDataBlob tid_nw_ipv4_address;
+    TidDataBlob tid_nw_ipv4_netmask;
+    TidDataBlob tid_nw_ipv4_gateway;
+    TidDataBlob tid_nw_ipv4_current;
+    TidDataBlob tid_nw_ipv6_mode;
+    TidDataBlob tid_nw_ipv6_address;
+    TidDataBlob tid_nw_ipv6_prefix;
+    TidDataBlob tid_nw_ipv6_gateway;
+    TidDataBlob tid_nw_ipv6_current;
+
+    TidDataBlob tid_dg_security_event;
+    TidDataBlob tid_dg_message;
+
+    RootTidStore() {
+        tid_rt_supported_tids.tid = TID_RT_SUPPORTED_TIDS;
+        tid_rt_endpoint_count.tid = TID_RT_ENDPOINT_COUNT;
+        tid_rt_protocol_version.tid = TID_RT_PROTOCOL_VERSION;
+        tid_rt_firmware_version.tid = TID_RT_FIRMWARE_VERSION;
+        tid_rt_device_label.tid = TID_RT_DEVICE_LABEL;
+        tid_rt_mult.tid = TID_RT_MULT;
+        tid_rt_identify.tid = TID_RT_IDENTIFY;
+        tid_rt_status.tid = TID_RT_STATUS;
+        tid_rt_role_capability.tid = TID_RT_ROLE_CAPABILITY;
+        tid_rt_reboot.tid = TID_RT_REBOOT;
+        tid_rt_model_name.tid = TID_RT_MODEL_NAME;
+        tid_rt_scope.tid = TID_RT_SCOPE;
+        tid_rt_unprovision.tid = TID_RT_UNPROVISION;
+
+        tid_nw_mac_address.tid = TID_NW_MAC_ADDRESS;
+        tid_nw_ipv4_mode.tid = TID_NW_IPV4_MODE;
+        tid_nw_ipv4_address.tid = TID_NW_IPV4_ADDRESS;
+        tid_nw_ipv4_netmask.tid = TID_NW_IPV4_NETMASK;
+        tid_nw_ipv4_gateway.tid = TID_NW_IPV4_GATEWAY;
+        tid_nw_ipv4_current.tid = TID_NW_IPV4_CURRENT;
+        tid_nw_ipv6_mode.tid = TID_NW_IPV6_MODE;
+        tid_nw_ipv6_address.tid = TID_NW_IPV6_ADDRESS;
+        tid_nw_ipv6_prefix.tid = TID_NW_IPV6_PREFIX;
+        tid_nw_ipv6_gateway.tid = TID_NW_IPV6_GATEWAY;
+        tid_nw_ipv6_current.tid = TID_NW_IPV6_CURRENT;
+
+        tid_dg_security_event.tid = TID_DG_SECURITY_EVENT;
+        tid_dg_message.tid = TID_DG_MESSAGE;
+    }
+};
+
+struct EP1TidStore {
+    TidDataBlob tid_ep_universe;
+    TidDataBlob tid_ep_label;
+    TidDataBlob tid_ep_mult_override;
+    TidDataBlob tid_ep_capability;
+    TidDataBlob tid_ep_direction;
+    TidDataBlob tid_ep_input_priority;
+    TidDataBlob tid_ep_status;
+    TidDataBlob tid_ep_failover;
+    TidDataBlob tid_ep_dmx_timing;
+    TidDataBlob tid_ep_refresh_capability;
+    TidDataBlob tid_rdm_tod_background;  // TID_RDM_TOD_BACKGROUND (0x0305) – 1 byte
+    TidDataBlob tid_rdm_flow_control;    // TID_RDM_FLOW_CONTROL (0x0306) – 2 bytes
+    TidDataBlob tid_rdm_tod_data;        // TID_RDM_TOD_DATA (0x0304) – [index,total,UIDs...]
+    TidDataBlob tid_dg_level_foldback;   // TID_DG_LEVEL_FOLDBACK (0xFF03) – 1..512 bytes
+
+    TidDataBlob tid_level;
+    TidDataBlob tid_priority;
+    TidDataBlob tid_sync;
+
+    EP1TidStore() {
+        tid_ep_universe.tid = TID_EP_UNIVERSE;
+        tid_ep_label.tid = TID_EP_LABEL;
+        tid_ep_mult_override.tid = TID_EP_MULT_OVERRIDE;
+        tid_ep_capability.tid = TID_EP_CAPABILITY;
+        tid_ep_direction.tid = TID_EP_DIRECTION;
+        tid_ep_input_priority.tid = TID_EP_INPUT_PRIORITY;
+        tid_ep_status.tid = TID_EP_STATUS;
+        tid_ep_failover.tid = TID_EP_FAILOVER;
+        tid_ep_dmx_timing.tid = TID_EP_DMX_TIMING;
+        tid_ep_refresh_capability.tid = TID_EP_REFRESH_CAPABILITY;
+        tid_rdm_tod_background.tid = TID_RDM_TOD_BACKGROUND;
+        tid_rdm_flow_control.tid = TID_RDM_FLOW_CONTROL;
+        tid_rdm_tod_data.tid = TID_RDM_TOD_DATA;
+        tid_dg_level_foldback.tid = TID_DG_LEVEL_FOLDBACK;
+
+        tid_level.tid = TID_LEVEL;
+        tid_priority.tid = TID_PRIORITY;
+        tid_sync.tid = TID_SYNC;
+    }
+};
+
+struct NodeUserData {
+    RootTidStore root;
+    EP1TidStore ep1;
+};
+
+//------------------------------------------------------------------------------
 // Packet Buffer Class
 // 
 // Manages a static 1400-byte buffer for constructing SigNet packets.
@@ -125,13 +277,12 @@ struct SigNetOptions {
 class PacketBuffer {
 public:
     PacketBuffer() : write_position_(0) {
-        memset(buffer_, 0, MAX_UDP_PAYLOAD);
+        // Buffer not zeroed; only write_position_ bytes are exposed by GetBuffer/GetSize.
     }
-    
+
     // Reset buffer for new packet construction
     void Reset() {
         write_position_ = 0;
-        memset(buffer_, 0, MAX_UDP_PAYLOAD);
     }
     
     // Get current write position

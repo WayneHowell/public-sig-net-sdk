@@ -64,7 +64,8 @@ public:
     bool ReadUInt32(uint32_t& value);  // Network byte order
     bool ReadBytes(uint8_t* dest, uint16_t count);
     bool Skip(uint16_t count);
-    
+    bool Seek(uint16_t new_position);
+
     // Peek operations (don't advance position)
     bool PeekByte(uint8_t& value) const;
     
@@ -153,21 +154,18 @@ int32_t ExtractURIString(
 
 //------------------------------------------------------------------------------
 // Parse SigNet Options
-// 
-// Parses all 6 SigNet custom options (2076-2236) from a packet.
-// 
-// Parameters:
-//   reader - PacketReader positioned after Uri-Path options
-//   options - Output: Receives parsed SigNet options
 //
-// Returns:
-//   SIGNET_SUCCESS on success
-//   SIGNET_ERROR_INVALID_OPTION if required option missing
-//   SIGNET_ERROR_BUFFER_TOO_SMALL if packet data insufficient
+// Parses all 6 SigNet custom options (2076-2236) from a packet.
+//
+// initial_prev_option seeds the delta accumulator: pass 0 when starting from
+// the option run, or COAP_OPTION_URI_PATH when chained after ExtractURIString.
+//
+// Returns SIGNET_SUCCESS, or SIGNET_ERROR_INVALID_OPTION / SIGNET_ERROR_BUFFER_TOO_SMALL.
 //------------------------------------------------------------------------------
 int32_t ParseSigNetOptions(
     PacketReader& reader,
-    SigNetOptions& options
+    SigNetOptions& options,
+    uint16_t initial_prev_option = 0
 );
 
 //------------------------------------------------------------------------------
@@ -205,6 +203,34 @@ int32_t ParseTID_LEVEL(
     uint8_t* dmx_data,
     uint16_t& slot_count
 );
+
+//------------------------------------------------------------------------------
+// Parse fixed-size hex byte arrays from text.
+//
+// Accepts optional leading "0x" and surrounding whitespace.
+// Expects exactly (byte_count * 2) hex digits after normalization.
+//------------------------------------------------------------------------------
+int32_t ParseHexBytes(
+    const char* text,
+    uint8_t* out_bytes,
+    uint16_t byte_count
+);
+
+// Parse 32-byte K0 hex value (64 hex chars).
+int32_t ParseK0Hex(const char* text, uint8_t out_k0[32]);
+
+// Parse 6-byte TUID hex value (12 hex chars).
+int32_t ParseTUIDHex(const char* text, uint8_t out_tuid[6]);
+
+// Parse endpoint text (decimal or prefixed hex, e.g. "65535", "0xFFFF", "$FFFF").
+int32_t ParseEndpointValue(const char* text, uint16_t& endpoint_out);
+
+// Parse 16-bit hex word with optional "0x" prefix.
+int32_t ParseHexWord(const char* text, uint16_t& value_out);
+
+// Validate Sig-Net URI shape and scope match.
+// Expected prefix: /sig-net/<version>/<scope>/...
+int32_t ValidateSigNetURI(const char* uri_string);
 
 //------------------------------------------------------------------------------
 // Verify Packet HMAC

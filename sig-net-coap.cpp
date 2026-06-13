@@ -34,15 +34,60 @@
 #include <stdio.h>
 #include <string.h>
 
-// Network byte order functions (htons, htonl)
+// Windows Sockets for network byte order functions (htons, htonl)
 #ifdef _WIN32
-  #include <winsock2.h>
-#else
-  #include <arpa/inet.h>
+#include <winsock2.h>
 #endif
 
 namespace SigNet {
 namespace CoAP {
+
+static char g_uri_scope[SIGNET_URI_SCOPE_MAX_LENGTH + 1] = "";
+
+static bool IsScopeCharUnreserved(unsigned char c)
+{
+    if (c >= 'A' && c <= 'Z') return true;
+    if (c >= 'a' && c <= 'z') return true;
+    if (c >= '0' && c <= '9') return true;
+    return (c == '-') || (c == '.') || (c == '_') || (c == '~');
+}
+
+int32_t SetURIScope(const char* scope)
+{
+    if (!scope) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    size_t len = strlen(scope);
+    if (len < 1 || len > SIGNET_URI_SCOPE_MAX_LENGTH) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    size_t i;
+    for (i = 0; i < len; ++i) {
+        const unsigned char c = static_cast<unsigned char>(scope[i]);
+        if (!IsScopeCharUnreserved(c)) {
+            return SIGNET_ERROR_INVALID_ARG;
+        }
+    }
+
+    memcpy(g_uri_scope, scope, len);
+    g_uri_scope[len] = '\0';
+    return SIGNET_SUCCESS;
+}
+
+const char* GetURIScope()
+{
+    if (g_uri_scope[0] == '\0') {
+        size_t def_len = strlen(SIGNET_URI_SCOPE_DEFAULT);
+        if (def_len > SIGNET_URI_SCOPE_MAX_LENGTH) {
+            def_len = SIGNET_URI_SCOPE_MAX_LENGTH;
+        }
+        memcpy(g_uri_scope, SIGNET_URI_SCOPE_DEFAULT, def_len);
+        g_uri_scope[def_len] = '\0';
+    }
+    return g_uri_scope;
+}
 
 //------------------------------------------------------------------------------
 // Build CoAP Header
@@ -187,12 +232,13 @@ int32_t EncodeCoAPOption(
 //------------------------------------------------------------------------------
 // Build URI-Path Options for Sig-Net
 // 
-// Constructs: /sig-net/v1/level/{universe}
-// As 4 separate Uri-Path options (Option 11):
+// Constructs: /sig-net/v1/{scope}/level/{universe}
+// As 5 separate Uri-Path options (Option 11):
 //   1. "sig-net"
 //   2. "v1"
-//   3. "level"
-//   4. "{universe}" (as ASCII decimal string)
+//   3. "{scope}"
+//   4. "level"
+//   5. "{universe}" (as ASCII decimal string)
 //------------------------------------------------------------------------------
 int32_t BuildURIPathOptions(
     PacketBuffer& buffer,
@@ -231,7 +277,19 @@ int32_t BuildURIPathOptions(
     }
     // prev_option remains COAP_OPTION_URI_PATH (delta = 0)
     
-    // Option 3: "level"
+    // Option 3: scope
+    result = EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(GetURIScope()),
+        strlen(GetURIScope())
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    // Option 4: "level"
     result = EncodeCoAPOption(
         buffer,
         COAP_OPTION_URI_PATH,
@@ -244,7 +302,7 @@ int32_t BuildURIPathOptions(
     }
     // prev_option remains COAP_OPTION_URI_PATH
     
-    // Option 4: universe number as ASCII decimal string
+    // Option 5: universe number as ASCII decimal string
     char universe_str[UNIVERSE_DECIMAL_BUFFER_SIZE];
     snprintf(universe_str, sizeof(universe_str), "%u", universe);
     
@@ -262,7 +320,7 @@ int32_t BuildURIPathOptions(
 //------------------------------------------------------------------------------
 // Build URI String for HMAC Calculation
 // 
-// Returns: "/sig-net/v1/level/{universe}"
+// Returns: "/sig-net/v1/{scope}/level/{universe}"
 // This is used as part of the HMAC input per Section 8.5
 //------------------------------------------------------------------------------
 int32_t BuildURIString(
@@ -278,13 +336,14 @@ int32_t BuildURIString(
         return SIGNET_ERROR_INVALID_ARG;
     }
     
-    // Build URI string: "/sig-net/v1/level/{universe}"
+    // Build URI string: "/sig-net/v1/{scope}/level/{universe}"
     int written = snprintf(
         uri_output,
         max_length,
-        "/%s/%s/%s/%u",
+        "/%s/%s/%s/%s/%u",
         SIGNET_URI_PREFIX,
         SIGNET_URI_VERSION,
+        GetURIScope(),
         SIGNET_URI_LEVEL,
         universe
     );
@@ -295,6 +354,105 @@ int32_t BuildURIString(
     
     return SIGNET_SUCCESS;
 }
+
+    bool DecodeCoapNibble(
+        const uint8_t* packet,
+        uint16_t packet_len,
+        uint16_t& pos,
+        uint8_t nibble,
+        uint16_t& value
+    ) {
+        if (!packet) {
+            return false;
+        }
+
+        if (nibble <= 12) {
+            value = nibble;
+            return true;
+        }
+
+        if (nibble == 13) {
+            if (pos >= packet_len) {
+                return false;
+            }
+            value = static_cast<uint16_t>(packet[pos++]) + 13;
+            return true;
+        }
+
+        if (nibble == 14) {
+            if (pos + 1 >= packet_len) {
+                return false;
+            }
+            // 0xFFFF + 269 wraps in uint16_t to 268 — widen first, then bound.
+            uint32_t ext = (static_cast<uint32_t>(packet[pos]) << 8) |
+                           static_cast<uint32_t>(packet[pos + 1]);
+            pos += 2;
+            uint32_t full = ext + 269u;
+            if (full > 0xFFFFu) {
+                return false;
+            }
+            value = static_cast<uint16_t>(full);
+            return true;
+        }
+
+        return false;
+    }
+
+    bool FindCoapOptionAndPayload(
+        const uint8_t* packet,
+        uint16_t packet_len,
+        uint16_t target_option,
+        uint16_t& option_offset,
+        uint16_t& option_len,
+        uint16_t& payload_offset
+    ) {
+        if (!packet || packet_len < 4) {
+            return false;
+        }
+
+        uint8_t token_len = packet[0] & 0x0F;
+        uint16_t pos = static_cast<uint16_t>(4 + token_len);
+        uint16_t prev_option = 0;
+
+        option_offset = 0;
+        option_len = 0;
+        payload_offset = packet_len;
+
+        while (pos < packet_len) {
+            if (packet[pos] == COAP_PAYLOAD_MARKER) {
+                payload_offset = static_cast<uint16_t>(pos + 1);
+                return (option_len > 0);
+            }
+
+            uint8_t header = packet[pos++];
+            uint8_t delta_nibble = static_cast<uint8_t>((header >> 4) & 0x0F);
+            uint8_t len_nibble = static_cast<uint8_t>(header & 0x0F);
+            uint16_t delta = 0;
+            uint16_t length = 0;
+
+            if (!DecodeCoapNibble(packet, packet_len, pos, delta_nibble, delta)) {
+                return false;
+            }
+            if (!DecodeCoapNibble(packet, packet_len, pos, len_nibble, length)) {
+                return false;
+            }
+
+            uint16_t option_number = static_cast<uint16_t>(prev_option + delta);
+            if (pos + length > packet_len) {
+                return false;
+            }
+
+            if (option_number == target_option) {
+                option_offset = pos;
+                option_len = length;
+            }
+
+            pos = static_cast<uint16_t>(pos + length);
+            prev_option = option_number;
+        }
+
+        return (option_len > 0);
+    }
 
 } // namespace CoAP
 } // namespace SigNet

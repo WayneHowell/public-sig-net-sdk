@@ -61,13 +61,16 @@ namespace SigNet {
 // Parameters:
 //   universe    - Universe number (1-63999)
 //   ip_output   - Buffer to receive IP address string (must be at least 16 bytes)
+//   ip_output_size - Total size of ip_output buffer in bytes.
+//                    Must be at least 16 to hold "255.255.255.255" + null terminator.
 //
 // Returns:
 //   SIGNET_SUCCESS on success
 //   SIGNET_ERROR_INVALID_ARG if universe out of range
 int32_t CalculateMulticastAddress(
     uint16_t universe,
-    char* ip_output
+    char* ip_output,
+    size_t ip_output_size
 );
 
 // Get multicast IP octets (for direct use with socket APIs)
@@ -77,6 +80,12 @@ int32_t GetMulticastOctets(
     uint8_t* octet1,
     uint8_t* octet2,
     uint8_t* octet3
+);
+
+int32_t ExtractIPv4Token(
+    const char* raw,
+    char* token_output,
+    uint32_t output_size
 );
 
 //------------------------------------------------------------------------------
@@ -173,6 +182,23 @@ int32_t BuildAnnouncePacket(
     uint32_t session_id,
     uint32_t seq_num,
     const uint8_t* citizen_key,
+    uint16_t message_id
+);
+
+// Build manager poll packet (/sig-net/v1/poll) containing a TID_POLL TLV,
+// signed with Km_global.
+int32_t BuildPollPacket(
+    PacketBuffer& buffer,
+    const uint8_t* manager_tuid,
+    uint16_t mfg_code,
+    uint16_t product_variant_id,
+    const uint8_t* tuid_lo,
+    const uint8_t* tuid_hi,
+    uint16_t target_endpoint,
+    uint8_t query_level,
+    uint32_t session_id,
+    uint32_t seq_num,
+    const uint8_t* manager_global_key,
     uint16_t message_id
 );
 

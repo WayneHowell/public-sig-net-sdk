@@ -27,7 +27,7 @@
 // Date:         March 28, 2026
 // Description:  Cryptographic primitives: HMAC-SHA256 (RFC 2104), HKDF-Expand
 //               (RFC 5869), and key derivation for Sender, Citizen, Manager.
-//               Windows: BCrypt API. POSIX: OpenSSL.
+//               Uses Windows BCrypt API (no external dependencies).
 //==============================================================================
 
 #ifndef SIGNET_CRYPTO_HPP
@@ -36,26 +36,28 @@
 #include "sig-net-constants.hpp"
 #include "sig-net-types.hpp"
 #include <stdint.h>
-#include <string.h>
 
 namespace SigNet {
-
-//------------------------------------------------------------------------------
-// Portable secure memory wipe - prevents compiler from optimising away the
-// zeroing of buffers that contain key material or other secrets.
-//
-// Windows: SecureZeroMemory (guaranteed not to be optimised out)
-// POSIX:   explicit_bzero  (POSIX.1-2017 / glibc 2.25+)
-//------------------------------------------------------------------------------
-inline void SecureZero(void* ptr, size_t len) {
-#ifdef _WIN32
-    SecureZeroMemory(ptr, len);
-#else
-    explicit_bzero(ptr, len);
-#endif
-}
-
 namespace Crypto {
+
+#if defined(USE_MBEDTLS)
+//------------------------------------------------------------------------------
+// MbedTLS Crypto Subsystem Initialization (Internal / Self-Test Only)
+//
+// Initializes the Mbed TLS entropy and CTR_DRBG contexts used by the
+// CryptoRandom() backend.
+//
+// Notes:
+//   - This function is called automatically on first use by CryptoRandom().
+//   - End users do NOT need to call this function explicitly.
+//   - Provided for internal use and self-test validation only.
+//
+// Returns:
+//   true  on successful initialization
+//   false on failure (entropy or DRBG setup failed)
+//------------------------------------------------------------------------------
+bool CryptoInit();
+#endif
 
 //------------------------------------------------------------------------------
 // HMAC-SHA256 Implementation (RFC 2104)
@@ -148,16 +150,42 @@ int32_t DeriveManagerLocalKey(
 // Utility Functions
 //------------------------------------------------------------------------------
 
-// Convert 6-byte TUID to 12-character hex string (uppercase, no null terminator)
+// Convert 6-byte TUID to 12-character uppercase hexadecimal string.
+//
+// Output format:
+//   - 12 ASCII characters ('0'–'9', 'A'–'F')
+//   - Null-terminated string
+//
+// Parameters:
+//   tuid             - Input buffer containing 6-byte TUID
+//   hex_output       - Output buffer to receive hex string
+//   hex_string_size  - Size of hex_output buffer in bytes
+//                      (must be >= 13 to hold 12 characters + null terminator)
 void TUID_ToHexString(
-    const uint8_t* tuid,         // Input: 6-byte TUID
-    char* hex_output             // Output: 12-char hex string (caller must provide 12+ bytes)
+    const uint8_t* tuid,
+    char* hex_output,
+    size_t hex_string_size
 );
 
 // Convert 12-character hex string to 6-byte TUID
 int32_t TUID_FromHexString(
     const char* hex_string,      // Input: 12-char hex string
     uint8_t* tuid                // Output: 6-byte TUID
+);
+
+// Generate an ephemeral TUID for software applications (Spec Section 6.6)
+// Combines the given manufacturer code with a CSPRNG-generated Device ID in
+// the ephemeral range 0x80000000–0xFFFFFFEF (MSB=1, reserved top 16 excluded).
+// Uses Windows BCrypt as the CSPRNG source.
+//
+// Parameters:
+//   mfg_code  - 16-bit ESTA Manufacturer ID (e.g. 0x534C for Singularity)
+//   tuid_out  - Output: 6-byte TUID (caller must provide 6 bytes)
+//
+// Returns SIGNET_SUCCESS on success, SIGNET_ERROR_CRYPTO on CSPRNG failure.
+int32_t TUID_GenerateEphemeral(
+    uint16_t mfg_code,
+    uint8_t* tuid_out
 );
 
 //------------------------------------------------------------------------------

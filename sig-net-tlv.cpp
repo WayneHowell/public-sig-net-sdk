@@ -127,6 +127,48 @@ int32_t EncodeTID_SYNC(
 }
 
 //------------------------------------------------------------------------------
+// Encode TID_POLL (Manager poll request)
+//------------------------------------------------------------------------------
+int32_t EncodeTID_POLL(
+    PacketBuffer& buffer,
+    const uint8_t* manager_tuid,
+    uint16_t mfg_code,
+    uint16_t product_variant_id,
+    const uint8_t* tuid_lo,
+    const uint8_t* tuid_hi,
+    uint16_t target_endpoint,
+    uint8_t query_level
+) {
+    if (!manager_tuid || !tuid_lo || !tuid_hi) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    if (query_level > QUERY_EXTENDED) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    uint8_t value[25];
+    memcpy(&value[0], manager_tuid, TUID_LENGTH);
+
+    uint32_t soem_code = (static_cast<uint32_t>(mfg_code) << 16) |
+                         static_cast<uint32_t>(product_variant_id);
+    value[6] = static_cast<uint8_t>((soem_code >> 24) & 0xFF);
+    value[7] = static_cast<uint8_t>((soem_code >> 16) & 0xFF);
+    value[8] = static_cast<uint8_t>((soem_code >> 8) & 0xFF);
+    value[9] = static_cast<uint8_t>(soem_code & 0xFF);
+
+    memcpy(&value[10], tuid_lo, TUID_LENGTH);
+    memcpy(&value[16], tuid_hi, TUID_LENGTH);
+
+    value[22] = static_cast<uint8_t>((target_endpoint >> 8) & 0xFF);
+    value[23] = static_cast<uint8_t>(target_endpoint & 0xFF);
+    value[24] = query_level;
+
+    TLVBlock tlv(TID_POLL, 25, value);
+    return EncodeTLV(buffer, tlv);
+}
+
+//------------------------------------------------------------------------------
 // Encode TID_POLL_REPLY (Startup Announce)
 //------------------------------------------------------------------------------
 int32_t EncodeTID_POLL_REPLY(
@@ -260,6 +302,32 @@ int32_t BuildStartupAnnouncePayload(
     }
 
     return EncodeTID_RT_ROLE_CAPABILITY(payload, role_capability_bits);
+}
+
+//------------------------------------------------------------------------------
+// Build Poll Payload (single TID_POLL TLV)
+//------------------------------------------------------------------------------
+int32_t BuildPollPayload(
+    PacketBuffer& payload,
+    const uint8_t* manager_tuid,
+    uint16_t mfg_code,
+    uint16_t product_variant_id,
+    const uint8_t* tuid_lo,
+    const uint8_t* tuid_hi,
+    uint16_t target_endpoint,
+    uint8_t query_level
+) {
+    payload.Reset();
+    return EncodeTID_POLL(
+        payload,
+        manager_tuid,
+        mfg_code,
+        product_variant_id,
+        tuid_lo,
+        tuid_hi,
+        target_endpoint,
+        query_level
+    );
 }
 
 //------------------------------------------------------------------------------

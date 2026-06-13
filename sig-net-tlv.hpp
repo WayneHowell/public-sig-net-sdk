@@ -128,6 +128,25 @@ int32_t EncodeTID_SYNC(
     PacketBuffer& buffer
 );
 
+// Encode TID_POLL (0x0001, length 25)
+// Value layout:
+// [0-5]   MANAGER_TUID
+// [6-9]   MANAGER_SOEM_CODE
+// [10-15] TUID_LO
+// [16-21] TUID_HI
+// [22-23] END_POINT (0xFFFF = broadcast all data endpoints)
+// [24]    QUERY_LEVEL (QUERY_HEARTBEAT..QUERY_EXTENDED)
+int32_t EncodeTID_POLL(
+    PacketBuffer& buffer,
+    const uint8_t* manager_tuid,
+    uint16_t mfg_code,
+    uint16_t product_variant_id,
+    const uint8_t* tuid_lo,
+    const uint8_t* tuid_hi,
+    uint16_t target_endpoint,
+    uint8_t query_level
+);
+
 //------------------------------------------------------------------------------
 // Startup Announce TLVs (Section 10.2.5)
 //------------------------------------------------------------------------------
@@ -188,6 +207,18 @@ int32_t BuildStartupAnnouncePayload(
     uint8_t protocol_version,
     uint8_t role_capability_bits,
     uint16_t change_count
+);
+
+// Build poll payload containing one TID_POLL TLV.
+int32_t BuildPollPayload(
+    PacketBuffer& payload,
+    const uint8_t* manager_tuid,
+    uint16_t mfg_code,
+    uint16_t product_variant_id,
+    const uint8_t* tuid_lo,
+    const uint8_t* tuid_hi,
+    uint16_t target_endpoint,
+    uint8_t query_level
 );
 
 //------------------------------------------------------------------------------
