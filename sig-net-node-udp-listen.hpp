@@ -116,44 +116,39 @@ inline bool ExtractPayload(const uint8_t* packet,
     payload_out = 0;
     payload_len_out = 0;
 
-    SigNet::Parse::PacketReader uri_reader(packet, packet_len);
+    // One reader through both phases. ExtractURIString leaves it at the first
+    // non-Uri-Path option; ParseSigNetOptions picks up with prev=URI_PATH.
+    SigNet::Parse::PacketReader reader(packet, packet_len);
     SigNet::CoAPHeader temp_header;
-    if (SigNet::Parse::ParseCoAPHeader(uri_reader, temp_header) != SigNet::SIGNET_SUCCESS) {
+    if (SigNet::Parse::ParseCoAPHeader(reader, temp_header) != SigNet::SIGNET_SUCCESS) {
         return false;
     }
-    if (SigNet::Parse::SkipToken(uri_reader, coap_header.GetTokenLength()) != SigNet::SIGNET_SUCCESS) {
+    if (SigNet::Parse::SkipToken(reader, coap_header.GetTokenLength()) != SigNet::SIGNET_SUCCESS) {
         return false;
     }
     uint16_t uri_len = 0;
-    if (SigNet::Parse::ExtractURIString(uri_reader, uri_out, uri_out_size, uri_len) != SigNet::SIGNET_SUCCESS) {
+    if (SigNet::Parse::ExtractURIString(reader, uri_out, uri_out_size, uri_len) != SigNet::SIGNET_SUCCESS) {
         return false;
     }
     if (SigNet::Parse::ValidateSigNetURI(uri_out) != SigNet::SIGNET_SUCCESS) {
         return false;
     }
-
-    SigNet::Parse::PacketReader option_reader(packet, packet_len);
-    if (SigNet::Parse::ParseCoAPHeader(option_reader, temp_header) != SigNet::SIGNET_SUCCESS) {
-        return false;
-    }
-    if (SigNet::Parse::SkipToken(option_reader, coap_header.GetTokenLength()) != SigNet::SIGNET_SUCCESS) {
-        return false;
-    }
-    if (SigNet::Parse::ParseSigNetOptions(option_reader, options_out) != SigNet::SIGNET_SUCCESS) {
+    if (SigNet::Parse::ParseSigNetOptions(reader, options_out, SigNet::COAP_OPTION_URI_PATH)
+            != SigNet::SIGNET_SUCCESS) {
         return false;
     }
 
     uint8_t marker = 0;
-    if (!option_reader.PeekByte(marker)) {
+    if (!reader.PeekByte(marker)) {
         return true;
     }
     if (marker != SigNet::COAP_PAYLOAD_MARKER) {
         return true;
     }
 
-    option_reader.ReadByte(marker);
-    payload_out = option_reader.GetCurrentPtr();
-    payload_len_out = option_reader.GetRemaining();
+    reader.ReadByte(marker);
+    payload_out = reader.GetCurrentPtr();
+    payload_len_out = reader.GetRemaining();
     return true;
 }
 

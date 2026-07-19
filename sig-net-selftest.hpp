@@ -43,7 +43,7 @@ struct TestResult {
 
 // Overall test suite results
 struct TestSuiteResults {
-    static const size_t MAX_TESTS = 64;
+    static const size_t MAX_TESTS = 128;
     
     TestResult tests[MAX_TESTS];
     size_t test_count;
@@ -68,6 +68,7 @@ void TestCoAPModule(TestSuiteResults& results);
 void TestTLVModule(TestSuiteResults& results);
 void TestSecurityModule(TestSuiteResults& results);
 void TestSendModule(TestSuiteResults& results);
+void TestRejectionPaths(TestSuiteResults& results);  // README v0.5 vectors + failure-path tests
 
 //==============================================================================
 // Helper: Add test result

@@ -243,6 +243,7 @@ void __fastcall TK0EntryDialog::FormCreate(TObject *Sender)
     
     // Initialize UI state
     EditPassphrase->Text = "";
+    EditPassphrase->PasswordChar = '*';
     EditK0Display->ReadOnly = true;
     EditK0Display->Text = "";
     
@@ -295,6 +296,7 @@ void __fastcall TK0EntryDialog::ButtonPassphraseToK0Click(TObject *Sender)
         K0Valid = false;
         ButtonOK->Enabled = false;
         ClearDerivedDisplays();
+        SecureZeroBuffer((void*)utf8Pass.c_str(), utf8Pass.Length());
         return;
     }
 
@@ -316,6 +318,9 @@ void __fastcall TK0EntryDialog::ButtonPassphraseToK0Click(TObject *Sender)
         EditCheckLength->Font->Color = clRed;
         EditCheckLength->Invalidate();
     }
+
+    // Zero the passphrase bytes before AnsiString hands them back to the heap.
+    SecureZeroBuffer((void*)utf8Pass.c_str(), utf8Pass.Length());
 }
 
 //---------------------------------------------------------------------------
