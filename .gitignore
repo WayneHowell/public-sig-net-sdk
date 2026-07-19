@@ -27,6 +27,21 @@
 # RAD Studio local history folders
 **/__history/
 **/__agent_snapshots/
+**/__recovery/
+
+# Stray temp / session artefacts
+*_TEMP.txt
+TEMP_*.txt
+SUMMARIES_TEMP.txt
+filtered_transcript.txt
+build.log
+*.log
+
+# Generated slim (hex-stripped) form shadows for AI context — regenerate with
+# scripts/strip-dfm-hex.ps1; never commit. NOTE: *.cbproj / *.groupproj are
+# intentionally NOT ignored — managed manually but kept version-controlled;
+# they are excluded from AI context via .copilotignore.
+.copilot/dfm-slim/
 
 # Keep distributable example executables tracked
 !sig-net-example-tid-level-tx/Win32/

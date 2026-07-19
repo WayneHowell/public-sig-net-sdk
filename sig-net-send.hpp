@@ -49,12 +49,12 @@ namespace SigNet {
 // Calculate multicast IP address for a given universe (Section 9.2.3)
 // 
 // Multicast Folding Formula:
-//   Index = ((Universe - 1) % 100) + 1
+//   Index = ((Universe - 1) % 109) + 1
 //   IP Address = 239.254.0.{Index}
 //
 // Examples:
 //   Universe 1    -> 239.254.0.1
-//   Universe 100  -> 239.254.0.100
+//   Universe 109  -> 239.254.0.109
 //   Universe 101  -> 239.254.0.1
 //   Universe 517  -> 239.254.0.18
 //
@@ -107,6 +107,15 @@ int32_t BuildNodeURIPathOptions(
     PacketBuffer& buffer,
     const uint8_t* tuid,
     uint16_t endpoint,
+    char* uri_output,
+    uint32_t uri_output_size
+);
+
+// Build URI-Path options for /sig-net/v1/{scope}/node_lost/{tuid}/0
+// (Lost-Mode announce, Appendix A <mult_node_lost>) and write the URI string for HMAC input.
+int32_t BuildNodeLostURIPathOptions(
+    PacketBuffer& buffer,
+    const uint8_t* tuid,
     char* uri_output,
     uint32_t uri_output_size
 );

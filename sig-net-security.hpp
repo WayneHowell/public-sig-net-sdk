@@ -37,7 +37,6 @@
 #include "sig-net-types.hpp"
 #include "sig-net-crypto.hpp"
 #include "sig-net-coap.hpp"
-#include <vector>
 
 namespace SigNet {
 namespace Security {

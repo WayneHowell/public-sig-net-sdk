@@ -143,7 +143,10 @@ int32_t BuildHMACInput(
     uint32_t output_size,
     uint32_t* bytes_written
 ) {
-    if (!uri_string || !payload || !output || !bytes_written) {
+    if (!uri_string || !output || !bytes_written) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+    if (payload_len > 0 && !payload) {
         return SIGNET_ERROR_INVALID_ARG;
     }
     

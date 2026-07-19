@@ -55,8 +55,8 @@ int32_t CalculateMulticastAddress(
         return SIGNET_ERROR_INVALID_ARG;
     }
     
-    // Multicast Folding Formula: Index = ((Universe - 1) % 100) + 1
-    uint8_t index = static_cast<uint8_t>(((universe - 1) % 100) + 1);
+    // Multicast Folding Formula: Index = ((Universe - 1) % 109) + 1
+    uint8_t index = static_cast<uint8_t>(((universe - 1) % 109) + 1);
     
     // Build IP address using proper network functions
     struct in_addr addr;
@@ -96,7 +96,7 @@ int32_t GetMulticastOctets(
     }
     
     // Multicast Folding Formula
-    uint8_t index = static_cast<uint8_t>(((universe - 1) % 100) + 1);
+    uint8_t index = static_cast<uint8_t>(((universe - 1) % 109) + 1);
     
     *octet0 = MULTICAST_BASE_OCTET_0;  // 239
     *octet1 = MULTICAST_BASE_OCTET_1;  // 254
@@ -285,6 +285,106 @@ int32_t BuildNodeURIPathOptions(
         prev_option,
         reinterpret_cast<const uint8_t*>(endpoint_str),
         strlen(endpoint_str)
+    );
+}
+
+//------------------------------------------------------------------------------
+// Build Node-Lost URI-Path Options and URI String
+// (/sig-net/v1/{scope}/node_lost/{tuid}/0) - Appendix A <mult_node_lost>, Lost Mode.
+//------------------------------------------------------------------------------
+int32_t BuildNodeLostURIPathOptions(
+    PacketBuffer& buffer,
+    const uint8_t* tuid,
+    char* uri_output,
+    uint32_t uri_output_size
+) {
+    if (!tuid || !uri_output || uri_output_size == 0) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+
+    char tuid_hex[TUID_HEX_LENGTH + 1];
+    tuid_hex[TUID_HEX_LENGTH] = '\0';
+    Crypto::TUID_ToHexString(tuid, tuid_hex);
+
+    int uri_written = snprintf(
+        uri_output,
+        uri_output_size,
+        "/%s/%s/%s/%s/%s/0",
+        SIGNET_URI_PREFIX,
+        SIGNET_URI_VERSION,
+        CoAP::GetURIScope(),
+        SIGNET_URI_NODE_LOST,
+        tuid_hex
+    );
+    if (uri_written < 0 || static_cast<uint32_t>(uri_written) >= uri_output_size) {
+        return SIGNET_ERROR_ENCODE;
+    }
+
+    uint16_t prev_option = 0;
+    int32_t result = CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(SIGNET_URI_PREFIX),
+        strlen(SIGNET_URI_PREFIX)
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+    prev_option = COAP_OPTION_URI_PATH;
+
+    result = CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(SIGNET_URI_VERSION),
+        strlen(SIGNET_URI_VERSION)
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    result = CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(CoAP::GetURIScope()),
+        strlen(CoAP::GetURIScope())
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    result = CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(SIGNET_URI_NODE_LOST),
+        strlen(SIGNET_URI_NODE_LOST)
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    result = CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>(tuid_hex),
+        strlen(tuid_hex)
+    );
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    // Appendix A (<mult_node_lost>): the node_lost URI carries a trailing root
+    // endpoint segment "0" -> /sig-net/<ver>/<scope>/node_lost/{tuid}/0.
+    return CoAP::EncodeCoAPOption(
+        buffer,
+        COAP_OPTION_URI_PATH,
+        prev_option,
+        reinterpret_cast<const uint8_t*>("0"),
+        1
     );
 }
 

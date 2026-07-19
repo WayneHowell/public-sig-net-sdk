@@ -51,7 +51,7 @@
 TFormSigNetPoller *FormSigNetPoller;
 
 #define APP_VERSION_MAJOR 0
-#define APP_VERSION_MINOR 5
+#define APP_VERSION_MINOR 6
 #define APP_VERSION_ID ((APP_VERSION_MAJOR << 8) | APP_VERSION_MINOR)
 
 static void SetLabelsTransparentRecursive(TWinControl* root)
@@ -620,7 +620,7 @@ bool TFormSigNetPoller::SendPollPacket()
     bool parse_ok = true;
     uint16_t mfg_code = ParseMfgCodeFromUI(parse_ok);
     if (!parse_ok) {
-        LogError("Manufacturer code must be valid hex (e.g. 534C or 0x534C)");
+        LogError("Manufacturer code must be valid hex (e.g. 5379 or 0x5379)");
         error_count++;
         return false;
     }
@@ -717,7 +717,7 @@ bool TFormSigNetPoller::SendAnnouncePacket()
         mfg_code = static_cast<uint16_t>(StrToInt(mfg_code_text));
     }
     catch (...) {
-        LogError("Manufacturer code must be valid hex (e.g. 534c or 0x534c)");
+        LogError("Manufacturer code must be valid hex (e.g. 5379 or 0x5379)");
         error_count++;
         return false;
     }

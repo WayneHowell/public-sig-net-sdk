@@ -234,7 +234,7 @@ object FormSigNetPoller: TFormSigNetPoller
         MaxLength = 14
         ParentFont = False
         TabOrder = 0
-        Text = '0x534c00000001'
+        Text = '0x537900000001'
       end
       object SpinEndpoint: TSpinEdit
         Left = 96

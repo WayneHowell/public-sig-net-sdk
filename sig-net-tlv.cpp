@@ -200,6 +200,22 @@ int32_t EncodeTID_POLL_REPLY(
 }
 
 //------------------------------------------------------------------------------
+// Encode TID_SET_REPLY (trailing configuration-confirmation TLV)
+//------------------------------------------------------------------------------
+int32_t EncodeTID_SET_REPLY(
+    PacketBuffer& buffer,
+    uint16_t change_count
+) {
+    uint8_t value[3];
+    value[0] = 0x00;  // Flags (reserved)
+    value[1] = static_cast<uint8_t>((change_count >> 8) & 0xFF);
+    value[2] = static_cast<uint8_t>(change_count & 0xFF);
+
+    TLVBlock tlv(TID_SET_REPLY, 3, value);
+    return EncodeTLV(buffer, tlv);
+}
+
+//------------------------------------------------------------------------------
 // Encode TID_RT_PROTOCOL_VERSION (Startup Announce)
 //------------------------------------------------------------------------------
 int32_t EncodeTID_RT_PROTOCOL_VERSION(
@@ -245,12 +261,18 @@ int32_t EncodeTID_RT_FIRMWARE_VERSION(
 
 //------------------------------------------------------------------------------
 // Encode TID_RT_ROLE_CAPABILITY (Startup Announce)
+// Spec 11.6.9: a 32-bit big-endian role bitfield (length 4). Bit 0 = Node role.
 //------------------------------------------------------------------------------
 int32_t EncodeTID_RT_ROLE_CAPABILITY(
     PacketBuffer& buffer,
-    uint8_t role_capability_bits
+    uint32_t role_capability_bits
 ) {
-    TLVBlock tlv(TID_RT_ROLE_CAPABILITY, 1, &role_capability_bits);
+    uint8_t value[4];
+    value[0] = static_cast<uint8_t>((role_capability_bits >> 24) & 0xFF);
+    value[1] = static_cast<uint8_t>((role_capability_bits >> 16) & 0xFF);
+    value[2] = static_cast<uint8_t>((role_capability_bits >> 8) & 0xFF);
+    value[3] = static_cast<uint8_t>(role_capability_bits & 0xFF);
+    TLVBlock tlv(TID_RT_ROLE_CAPABILITY, 4, value);
     return EncodeTLV(buffer, tlv);
 }
 
@@ -291,17 +313,42 @@ int32_t BuildStartupAnnouncePayload(
         return result;
     }
 
-    result = EncodeTID_RT_FIRMWARE_VERSION(payload, firmware_version_id, firmware_version_string);
-    if (result != SIGNET_SUCCESS) {
-        return result;
-    }
-
     result = EncodeTID_RT_PROTOCOL_VERSION(payload, protocol_version);
     if (result != SIGNET_SUCCESS) {
         return result;
     }
 
-    return EncodeTID_RT_ROLE_CAPABILITY(payload, role_capability_bits);
+    result = EncodeTID_RT_ROLE_CAPABILITY(payload, role_capability_bits);
+    if (result != SIGNET_SUCCESS) {
+        return result;
+    }
+
+    {
+        uint8_t endpoint_count[2] = { 0x00, 0x01 };
+        TLVBlock tlv(TID_RT_ENDPOINT_COUNT, 2, endpoint_count);
+        result = EncodeTLV(payload, tlv);
+        if (result != SIGNET_SUCCESS) {
+            return result;
+        }
+    }
+
+    {
+        uint8_t mult_override[1] = { 0x00 };
+        TLVBlock tlv(TID_RT_MULT_OVERRIDE, 1, mult_override);
+        result = EncodeTLV(payload, tlv);
+        if (result != SIGNET_SUCCESS) {
+            return result;
+        }
+    }
+
+    // Spec 10.2.5 (revised): the mandated On-Boot Notification TLVs are, in order,
+    // TID_POLL_REPLY, TID_RT_PROTOCOL_VERSION, TID_RT_ROLE_CAPABILITY,
+    // TID_RT_ENDPOINT_COUNT, TID_RT_MULT_OVERRIDE (+ TID_RT_OTW_CAPABILITY if OTW
+    // onboarding is supported). TID_RT_FIRMWARE_VERSION is NOT part of this set.
+    // firmware_version_id / firmware_version_string are retained in the signature
+    // for API stability but are no longer emitted here.
+    (void)firmware_version_id;
+    return SIGNET_SUCCESS;
 }
 
 //------------------------------------------------------------------------------

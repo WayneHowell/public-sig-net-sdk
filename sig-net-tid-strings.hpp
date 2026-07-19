@@ -41,6 +41,7 @@
 #define SIGNET_NODE_STRINGS_HPP
 
 #include "sig-net-constants.hpp"
+#include "sig-net-node-profile.hpp"
 
 namespace SigNet {
 namespace Node {
@@ -251,71 +252,11 @@ inline uint8_t GetDmxOutputTimingValue(int index)
 // Entries marked mandated=true are checked by default.
 //------------------------------------------------------------------------------
 
-struct SupportedTidEntry {
-    uint16_t    tid;
-    const char* label;
-    bool        mandated;
-    bool        allowed_root_ep;
-    bool        allowed_data_ep;
-    bool        write_only;
-    bool        supports_get;
-};
-
-static const int SUPPORTED_TID_COUNT = 46;
+static const int SUPPORTED_TID_COUNT = PROFILE_SUPPORTED_TID_COUNT;
 
 inline const SupportedTidEntry* GetSupportedTidTable()
 {
-    static const SupportedTidEntry k_table[SUPPORTED_TID_COUNT] = {
-        { TID_RT_ENDPOINT_COUNT,   "TID_RT_ENDPOINT_COUNT (0x0602) - mandated",  true,  true,  false, false, true  },
-        { TID_RT_PROTOCOL_VERSION, "TID_RT_PROTOCOL_VERSION (0x0603) - mandated",true,  true,  false, false, true  },
-        { TID_RT_FIRMWARE_VERSION, "TID_RT_FIRMWARE_VERSION (0x0604) - mandated",true,  true,  false, false, true  },
-        { TID_RT_DEVICE_LABEL,     "TID_RT_DEVICE_LABEL (0x0605) - mandated",    true,  true,  false, false, true  },
-        { TID_RT_MULT,             "TID_RT_MULT_OVERRIDE (0x0606) - mandated",    true,  true,  false, false, true  },
-        { TID_RT_IDENTIFY,         "TID_RT_IDENTIFY (0x0607) - mandated",        true,  true,  false, false, true  },
-        { TID_RT_STATUS,           "TID_RT_STATUS (0x0608) - mandated",          true,  true,  false, false, true  },
-        { TID_RT_ROLE_CAPABILITY,  "TID_RT_ROLE_CAPABILITY (0x0609) - mandated", true,  true,  false, false, true  },
-        { TID_RT_MODEL_NAME,       "TID_RT_MODEL_NAME (0x060B) - mandated",      true,  true,  false, false, true  },
-        { TID_RT_SCOPE,            "TID_RT_SCOPE (0x060C) - mandated",           true,  true,  false, false, true  },
-        { TID_RT_REBOOT,           "TID_RT_REBOOT (0x060A) - optional",          false, true,  false, true,  false },
-        { TID_RT_UNPROVISION,      "TID_RT_UNPROVISION (0x0401) - optional",     false, true,  false, true,  false },
-        { TID_NW_MAC_ADDRESS,      "TID_NW_MAC_ADDRESS (0x0501) - optional",     false, true,  false, false, true  },
-        { TID_NW_IPV4_MODE,        "TID_NW_IPV4_MODE (0x0502) - optional",       false, true,  false, false, true  },
-        { TID_NW_IPV4_ADDRESS,     "TID_NW_IPV4_ADDRESS (0x0503) - optional",    false, true,  false, false, true  },
-        { TID_NW_IPV4_NETMASK,     "TID_NW_IPV4_NETMASK (0x0504) - optional",    false, true,  false, false, true  },
-        { TID_NW_IPV4_GATEWAY,     "TID_NW_IPV4_GATEWAY (0x0505) - optional",    false, true,  false, false, true  },
-        { TID_NW_IPV4_CURRENT,     "TID_NW_IPV4_CURRENT (0x0506) - optional",    false, true,  false, false, true  },
-        { TID_NW_IPV6_MODE,        "TID_NW_IPV6_MODE (0x0581) - optional",       false, true,  false, false, true  },
-        { TID_NW_IPV6_ADDRESS,     "TID_NW_IPV6_ADDRESS (0x0582) - optional",    false, true,  false, false, true  },
-        { TID_NW_IPV6_PREFIX,      "TID_NW_IPV6_PREFIX (0x0583) - optional",     false, true,  false, false, true  },
-        { TID_NW_IPV6_GATEWAY,     "TID_NW_IPV6_GATEWAY (0x0584) - optional",    false, true,  false, false, true  },
-        { TID_NW_IPV6_CURRENT,     "TID_NW_IPV6_CURRENT (0x0585) - optional",    false, true,  false, false, true  },
-        { TID_DG_SECURITY_EVENT,   "TID_DG_SECURITY_EVENT (0xFF01) - diagnostics",true,true, false,false, true  },
-        { TID_DG_MESSAGE,          "TID_DG_MESSAGE (0xFF02) - diagnostics",      false, true,  false, false, true  },
-
-        { TID_EP_UNIVERSE,         "TID_EP_UNIVERSE (0x0901) - data endpoint",   true,  false, true,  false, true  },
-        { TID_EP_LABEL,            "TID_EP_LABEL (0x0902) - data endpoint",      true,  false, true,  false, true  },
-        { TID_EP_MULT_OVERRIDE,    "TID_EP_MULT_OVERRIDE (0x0903) - data endpoint",true,false,true,  false, true  },
-        { TID_EP_CAPABILITY,       "TID_EP_CAPABILITY (0x0904) - data endpoint", true,  false, true,  false, true  },
-        { TID_EP_DIRECTION,        "TID_EP_DIRECTION (0x0905) - data endpoint",  true,  false, true,  false, true  },
-        { TID_EP_INPUT_PRIORITY,   "TID_EP_INPUT_PRIORITY (0x0906) - data endpoint",false,false,true,false, true  },
-        { TID_EP_STATUS,           "TID_EP_STATUS (0x0907) - data endpoint",     true,  false, true,  false, true  },
-        { TID_EP_FAILOVER,         "TID_EP_FAILOVER (0x0908) - data endpoint",   true,  false, true,  false, true  },
-        { TID_EP_DMX_TIMING,       "TID_EP_DMX_TIMING (0x0909) - data endpoint", false, false, true,  false, true  },
-        { TID_EP_REFRESH_CAPABILITY,"TID_EP_REFRESH_CAPABILITY (0x090A) - data endpoint",false,false,true,false, true  },
-        { TID_RDM_TOD_BACKGROUND,  "TID_RDM_TOD_BACKGROUND (0x0305) - data endpoint",false,false,true,false, true  },
-        { TID_RDM_FLOW_CONTROL,    "TID_RDM_FLOW_CONTROL (0x0306) - data endpoint",false,false,true,false, true  },
-        { TID_RDM_TOD_DATA,        "TID_RDM_TOD_DATA (0x0304) - query only",     false, false, true,  false, true  },
-        { TID_RDM_COMMAND,         "TID_RDM_COMMAND (0x0301) - RDM command",      false, true,  true,  true,  false },
-        { TID_RDM_RESPONSE,        "TID_RDM_RESPONSE (0x0302) - RDM response",    false, true,  true,  false, false },
-        { TID_RDM_TOD_CONTROL,     "TID_RDM_TOD_CONTROL (0x0303) - TOD control",  false, false, true,  true,  false },
-        { TID_DG_LEVEL_FOLDBACK,   "TID_DG_LEVEL_FOLDBACK (0xFF03) - query only",false,false,true,false, true  },
-
-        { TID_LEVEL,               "TID_LEVEL (0x0101) - data stream",           false, false, true,  false, false },
-        { TID_PRIORITY,            "TID_PRIORITY (0x0102) - data stream",        false, false, true,  false, false },
-        { TID_SYNC,                "TID_SYNC (0x0201) - data stream",            false, false, true,  false, false },
-        { TID_TIMECODE,            "TID_TIMECODE (0x0202) - data stream",        false, false, true,  false, false }
-    };
-    return k_table;
+    return GetProfileSupportedTidTable();
 }
 
 inline bool IsTidWriteOnly(uint16_t tid)
@@ -341,6 +282,21 @@ inline bool IsTidGetSupported(uint16_t tid)
     for (i = 0; i < SUPPORTED_TID_COUNT; ++i) {
         if (table[i].tid == tid) {
             return table[i].supports_get;
+        }
+    }
+    return false;
+}
+
+// Returns true if a valid state change to this TID must increment the node's
+// CHANGE_COUNT (spec 10.4.4 Consistency Tracking). Non-persistent TIDs (status,
+// identify, volatile triggers) never increment the counter.
+inline bool IsTidPersistent(uint16_t tid)
+{
+    const SupportedTidEntry* table = GetSupportedTidTable();
+    int i;
+    for (i = 0; i < SUPPORTED_TID_COUNT; ++i) {
+        if (table[i].tid == tid) {
+            return table[i].persistent;
         }
     }
     return false;
@@ -376,7 +332,7 @@ inline bool IsTidAllowedForEndpoint(uint16_t tid, bool is_root_ep, bool is_data_
         case TID_EP_FAILOVER:
         case TID_EP_DMX_TIMING:
         case TID_EP_REFRESH_CAPABILITY:
-        case TID_RDM_TOD_BACKGROUND:
+        case TID_RDM_PORT_CONFIG:
         case TID_RDM_FLOW_CONTROL:
         case TID_RDM_TOD_DATA:
         case TID_DG_LEVEL_FOLDBACK:

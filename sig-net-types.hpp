@@ -107,9 +107,10 @@ struct SigNetOptions {
     uint16_t mfg_code;                   // SIGNET_OPTION_MFG_CODE (2 bytes)
     uint32_t session_id;                 // SIGNET_OPTION_SESSION_ID (4 bytes)
     uint32_t seq_num;                    // SIGNET_OPTION_SEQ_NUM (4 bytes)
+    uint16_t auth_length;                // Parsed auth option length (0 or 32 in v1)
     uint8_t  hmac[HMAC_SHA256_LENGTH];   // SIGNET_OPTION_HMAC (32 bytes)
     
-    SigNetOptions() : security_mode(0), mfg_code(0), session_id(0), seq_num(0) {
+    SigNetOptions() : security_mode(0), mfg_code(0), session_id(0), seq_num(0), auth_length(0) {
         memset(sender_id, 0, SENDER_ID_LENGTH);
         memset(hmac, 0, HMAC_SHA256_LENGTH);
     }
@@ -228,7 +229,8 @@ struct EP1TidStore {
     TidDataBlob tid_ep_failover;
     TidDataBlob tid_ep_dmx_timing;
     TidDataBlob tid_ep_refresh_capability;
-    TidDataBlob tid_rdm_tod_background;  // TID_RDM_TOD_BACKGROUND (0x0305) – 1 byte
+    TidDataBlob tid_ep_protocol;
+    TidDataBlob tid_rdm_port_config;  // TID_RDM_PORT_CONFIG (0x0305) – 1 byte
     TidDataBlob tid_rdm_flow_control;    // TID_RDM_FLOW_CONTROL (0x0306) – 2 bytes
     TidDataBlob tid_rdm_tod_data;        // TID_RDM_TOD_DATA (0x0304) – [index,total,UIDs...]
     TidDataBlob tid_dg_level_foldback;   // TID_DG_LEVEL_FOLDBACK (0xFF03) – 1..512 bytes
@@ -248,7 +250,8 @@ struct EP1TidStore {
         tid_ep_failover.tid = TID_EP_FAILOVER;
         tid_ep_dmx_timing.tid = TID_EP_DMX_TIMING;
         tid_ep_refresh_capability.tid = TID_EP_REFRESH_CAPABILITY;
-        tid_rdm_tod_background.tid = TID_RDM_TOD_BACKGROUND;
+        tid_ep_protocol.tid = TID_EP_PROTOCOL;
+        tid_rdm_port_config.tid = TID_RDM_PORT_CONFIG;
         tid_rdm_flow_control.tid = TID_RDM_FLOW_CONTROL;
         tid_rdm_tod_data.tid = TID_RDM_TOD_DATA;
         tid_dg_level_foldback.tid = TID_DG_LEVEL_FOLDBACK;

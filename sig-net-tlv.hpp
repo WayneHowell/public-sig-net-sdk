@@ -161,6 +161,15 @@ int32_t EncodeTID_POLL_REPLY(
     uint16_t change_count
 );
 
+// Encode TID_SET_REPLY (0x0003, length 3)
+// Value layout: [0]=Flags (reserved, 0x00), [1-2]=CHANGE_COUNT
+// Appended exclusively as the final trailing TLV of a configuration
+// confirmation / proactive notification response (spec 11.1.3, 10.4.4).
+int32_t EncodeTID_SET_REPLY(
+    PacketBuffer& buffer,
+    uint16_t change_count
+);
+
 // Encode TID_RT_PROTOCOL_VERSION (0x0603, length 1)
 int32_t EncodeTID_RT_PROTOCOL_VERSION(
     PacketBuffer& buffer,
@@ -175,10 +184,10 @@ int32_t EncodeTID_RT_FIRMWARE_VERSION(
     const char* version_string
 );
 
-// Encode TID_RT_ROLE_CAPABILITY (0x0609, length 1)
+// Encode TID_RT_ROLE_CAPABILITY (0x0609, length 4 - 32-bit BE role bitfield)
 int32_t EncodeTID_RT_ROLE_CAPABILITY(
     PacketBuffer& buffer,
-    uint8_t role_capability_bits
+    uint32_t role_capability_bits
 );
 
 //------------------------------------------------------------------------------
@@ -194,9 +203,13 @@ int32_t BuildDMXLevelPayload(
 
 // Build startup announce payload with fixed TLV ordering (Section 10.2.5):
 //   1) TID_POLL_REPLY
-//   2) TID_RT_FIRMWARE_VERSION
-//   3) TID_RT_PROTOCOL_VERSION
-//   4) TID_RT_ROLE_CAPABILITY
+//   2) TID_RT_PROTOCOL_VERSION
+//   3) TID_RT_ROLE_CAPABILITY
+//   4) TID_RT_ENDPOINT_COUNT
+//   5) TID_RT_MULT_OVERRIDE
+//   (TID_RT_OTW_CAPABILITY is appended by callers that support OTW onboarding.)
+// Note: firmware_version_id / firmware_version_string are retained for API
+// stability but are no longer emitted (removed from the 10.2.5 mandated set).
 int32_t BuildStartupAnnouncePayload(
     PacketBuffer& payload,
     const uint8_t* tuid,

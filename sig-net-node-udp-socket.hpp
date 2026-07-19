@@ -47,9 +47,46 @@ inline void ResetUdpGroupState(UdpGroupState& groups)
     groups.ep1_multicast_ip[0] = 0;
 }
 
+inline bool ExtractValidIPv4FromText(const char* source, char* out_ip, size_t out_len)
+{
+    if (!source || !out_ip || out_len < 8) {
+        return false;
+    }
+
+    out_ip[0] = 0;
+
+    SigNet::ExtractIPv4Token(source, out_ip, out_len);
+    if (out_ip[0] == 0 && source[0] != 0) {
+        strncpy(out_ip, source, out_len - 1);
+        out_ip[out_len - 1] = 0;
+
+        while (*out_ip == ' ' || *out_ip == '\t') {
+            memmove(out_ip, out_ip + 1, strlen(out_ip));
+        }
+
+        char* space = strchr(out_ip, ' ');
+        if (space) {
+            *space = 0;
+        }
+    }
+
+    if (out_ip[0] == 0) {
+        return false;
+    }
+
+    u_long addr = inet_addr(out_ip);
+    if (addr == INADDR_NONE && strcmp(out_ip, "255.255.255.255") != 0) {
+        out_ip[0] = 0;
+        return false;
+    }
+
+    return true;
+}
+
 inline bool EnsureSocketInitialized(SOCKET& udp_socket,
                                     bool& winsock_started,
                                     bool& socket_initialized,
+                                    const char* bind_ip,
                                     UdpLogCallback log_callback,
                                     void* user_context)
 {
@@ -94,7 +131,19 @@ inline bool EnsureSocketInitialized(SOCKET& udp_socket,
     sockaddr_in local_addr;
     memset(&local_addr, 0, sizeof(local_addr));
     local_addr.sin_family = AF_INET;
+    // Bind to the selected NIC's unicast IP (not INADDR_ANY) so unicast traffic
+    // addressed to this node is delivered specifically to THIS socket. On a single
+    // host running multiple Sig-Net apps that share UDP/5683 via SO_REUSEADDR, an
+    // INADDR_ANY bind lets Windows hand an incoming unicast to the wrong socket;
+    // a specific-IP bind is the deterministic best-match. Falls back to INADDR_ANY
+    // when no valid bind IP is supplied.
     local_addr.sin_addr.s_addr = INADDR_ANY;
+    if (bind_ip && bind_ip[0] != 0) {
+        unsigned long bind_addr = inet_addr(bind_ip);
+        if (bind_addr != INADDR_NONE) {
+            local_addr.sin_addr.s_addr = bind_addr;
+        }
+    }
     local_addr.sin_port = htons(SigNet::SIGNET_UDP_PORT);
 
     if (bind(udp_socket, (sockaddr*)&local_addr, sizeof(local_addr)) == SOCKET_ERROR) {
@@ -144,7 +193,15 @@ inline bool EnsureSocketInitialized(SOCKET& udp_socket,
     }
 
     socket_initialized = true;
-    EmitUdpLog(log_callback, user_context, false, "Socket ready on UDP/5683");
+    {
+        char ready_msg[80];
+        if (local_addr.sin_addr.s_addr == INADDR_ANY) {
+            sprintf(ready_msg, "Socket ready on UDP/%u bound to INADDR_ANY", SigNet::SIGNET_UDP_PORT);
+        } else {
+            sprintf(ready_msg, "Socket ready on UDP/%u bound to %s", SigNet::SIGNET_UDP_PORT, bind_ip);
+        }
+        EmitUdpLog(log_callback, user_context, false, ready_msg);
+    }
     return true;
 }
 

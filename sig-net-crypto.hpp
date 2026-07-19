@@ -149,7 +149,7 @@ int32_t TUID_FromHexString(
 // Uses Windows BCrypt as the CSPRNG source.
 //
 // Parameters:
-//   mfg_code  - 16-bit ESTA Manufacturer ID (e.g. 0x534C for Singularity)
+//   mfg_code  - 16-bit ESTA Manufacturer ID (e.g. 0x5379 for Singularity)
 //   tuid_out  - Output: 6-byte TUID (caller must provide 6 bytes)
 //
 // Returns SIGNET_SUCCESS on success, SIGNET_ERROR_CRYPTO on CSPRNG failure.

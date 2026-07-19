@@ -100,6 +100,27 @@ bool StoreNodeBlobFromBytesIfChanged(TidDataBlob& blob,
                                      bool& changed_out);
 
 //------------------------------------------------------------------------------
+// Supported TID blob access helpers
+//
+// These helpers expose the simplified supported root/data blob sets via indexed
+// access and tid lookup, so UI/executable code does not need local switch maps.
+//------------------------------------------------------------------------------
+
+int GetSupportedRootBlobCount();
+int GetSupportedDataBlobCount();
+
+TidDataBlob* GetSupportedRootBlobByIndex(NodeUserData& data, int index);
+TidDataBlob* GetSupportedDataBlobByIndex(NodeUserData& data, int index);
+const TidDataBlob* GetSupportedRootBlobByIndex(const NodeUserData& data, int index);
+const TidDataBlob* GetSupportedDataBlobByIndex(const NodeUserData& data, int index);
+
+TidDataBlob* FindSupportedTidBlob(NodeUserData& data, uint16_t tid);
+const TidDataBlob* FindSupportedTidBlob(const NodeUserData& data, uint16_t tid);
+
+void ClearAllManagerStaleFlags(NodeUserData& data);
+void ClearAllUIStaleFlags(NodeUserData& data);
+
+//------------------------------------------------------------------------------
 // BuildNodeQueryPayload
 //
 // Builds the TLV payload for a poll reply at the given query level, reading

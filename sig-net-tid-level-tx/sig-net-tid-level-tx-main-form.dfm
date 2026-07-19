@@ -58,7 +58,7 @@ object FormSigNetTx: TFormSigNetTx
         Top = 19
         Width = 105
         Height = 25
-        Caption = 'Provision'
+        Caption = 'Onboard'
         TabOrder = 3
         OnClick = ButtonSelectK0Click
       end
@@ -91,7 +91,7 @@ object FormSigNetTx: TFormSigNetTx
         Top = 19
         Width = 105
         Height = 25
-        Caption = 'De-provision'
+        Caption = 'Offboard'
         TabOrder = 4
         OnClick = ButtonDeprovisionClick
       end
@@ -241,7 +241,7 @@ object FormSigNetTx: TFormSigNetTx
         MaxLength = 14
         ParentFont = False
         TabOrder = 0
-        Text = '0x534c00000001'
+        Text = '0x537900000001'
       end
       object SpinEndpoint: TSpinEdit
         Left = 96

@@ -216,7 +216,7 @@ void TestCoAPModule(TestSuiteResults& results) {
     
     // Test 3: URI string building
     {
-        char uri_buffer[64];
+        char uri_buffer[URI_STRING_MIN_BUFFER];
         int32_t result = CoAP::BuildURIString(517, uri_buffer, sizeof(uri_buffer));
         bool passed = (result == SIGNET_SUCCESS) && (strlen(uri_buffer) > 0);
         AddTestResult(results, "CoAP: Build URI String",
@@ -258,7 +258,7 @@ void TestCoAPModule(TestSuiteResults& results) {
     {
         PacketBuffer buffer;
         uint8_t dmx_data[4] = { 1, 2, 3, 4 };
-        uint8_t tuid[6] = { 0x53, 0x4C, 0x00, 0x00, 0x00, 0x01 };
+        uint8_t tuid[6] = { (uint8_t)(SIGNET_MANUFACTURER_ID >> 8), (uint8_t)(SIGNET_MANUFACTURER_ID & 0xFF), 0x00, 0x00, 0x00, 0x01 };
         uint8_t sender_key[32];
         memset(sender_key, 0x11, sizeof(sender_key));
 
@@ -269,7 +269,7 @@ void TestCoAPModule(TestSuiteResults& results) {
             4,
             tuid,
             1,
-            0x534C,
+            SIGNET_MANUFACTURER_ID,
             1,
             1,
             sender_key,
@@ -318,11 +318,11 @@ void TestTLVModule(TestSuiteResults& results) {
     // Test 2: Build Startup Announce Payload
     {
         PacketBuffer payload;
-        uint8_t tuid[6] = { 0x53, 0x4C, 0x00, 0x00, 0x00, 0x01 };
+        uint8_t tuid[6] = { (uint8_t)(SIGNET_MANUFACTURER_ID >> 8), (uint8_t)(SIGNET_MANUFACTURER_ID & 0xFF), 0x00, 0x00, 0x00, 0x01 };
         const char* fw_ver = "v1.0.0";
         
         int32_t result = TLV::BuildStartupAnnouncePayload(
-            payload, tuid, 0x534C, 0, 0x0100BC, fw_ver, 1, 0x01, 0);
+            payload, tuid, SIGNET_MANUFACTURER_ID, 0, 0x0100BC, fw_ver, 1, 0x01, 0);
         
         bool passed = (result == SIGNET_SUCCESS) && (payload.GetSize() > 0);
         AddTestResult(results, "TLV: Build Announce Payload",
@@ -337,7 +337,7 @@ void TestTLVModule(TestSuiteResults& results) {
 void TestSecurityModule(TestSuiteResults& results) {
     // Test 1: Sender ID building
     {
-        uint8_t tuid[6] = { 0x53, 0x4C, 0x00, 0x00, 0x00, 0x01 };
+        uint8_t tuid[6] = { (uint8_t)(SIGNET_MANUFACTURER_ID >> 8), (uint8_t)(SIGNET_MANUFACTURER_ID & 0xFF), 0x00, 0x00, 0x00, 0x01 };
         uint8_t sender_id[8];
         
         int32_t result = Security::BuildSenderID(tuid, 0, sender_id);

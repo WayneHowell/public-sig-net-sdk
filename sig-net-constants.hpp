@@ -87,6 +87,7 @@ static const uint16_t SIGNET_OPTION_HMAC          = 2236;  // 32 bytes (HMAC-SHA
 //------------------------------------------------------------------------------
 
 static const uint8_t SECURITY_MODE_HMAC_SHA256    = 0x00;  // HMAC-SHA256, plaintext payload
+static const uint8_t SECURITY_MODE_OPEN            = 0x01;  // Open mode, unauthenticated
 static const uint8_t SECURITY_MODE_UNPROVISIONED  = 0xFF;  // Unprovisioned beacon mode
 
 //------------------------------------------------------------------------------
@@ -99,6 +100,7 @@ static const uint8_t SECURITY_MODE_UNPROVISIONED  = 0xFF;  // Unprovisioned beac
 // Section 11.1 - Node-Discovery Type Identifiers
 static const uint16_t TID_POLL                  = 0x0001;  // Poll: request node-discovery replies (25 bytes)
 static const uint16_t TID_POLL_REPLY            = 0x0002;  // Poll reply: presence, TUID, SoemCode, CHANGE_COUNT (12 bytes)
+static const uint16_t TID_SET_REPLY             = 0x0003;  // Set reply: trailing confirmation TLV, Flags + CHANGE_COUNT (3 bytes)
 
 // Section 11.2 - Sender Type Identifiers
 static const uint16_t TID_LEVEL                 = 0x0101;  // DMX level data, zero start code (1-512 bytes)
@@ -111,11 +113,13 @@ static const uint16_t TID_RDM_COMMAND           = 0x0301;  // Encapsulated E1.20
 static const uint16_t TID_RDM_RESPONSE          = 0x0302;  // Encapsulated E1.20 RDM response from Node (26-257 bytes)
 static const uint16_t TID_RDM_TOD_CONTROL       = 0x0303;  // TOD control: force discovery or flush (1 byte)
 static const uint16_t TID_RDM_TOD_DATA          = 0x0304;  // RDM ToD block with packet index/total + UID array (2+N bytes)
-static const uint16_t TID_RDM_TOD_BACKGROUND    = 0x0305;  // Enable/disable background RDM discovery (0/1 byte)
+static const uint16_t TID_RDM_PORT_CONFIG    = 0x0305;  // Enable/disable background RDM discovery (0/1 byte)
+static const uint16_t TID_RDM_EP_CONFIG          = 0x0305;  // Spec name alias for TID_RDM_PORT_CONFIG
 static const uint16_t TID_RDM_FLOW_CONTROL      = 0x0306;  // RDM FIFO capacity/availability report (0/2 bytes)
 
 // Section 11.4 - Provisioning Type Identifiers (Root Endpoint only)
 static const uint16_t TID_RT_UNPROVISION        = 0x0401;  // Wipe keys and return to unprovisioned state (4 bytes, magic 0x57495045)
+static const uint16_t TID_RT_OFFBOARD           = 0x0401;  // Spec name alias for TID_RT_UNPROVISION
 
 // Section 11.5 - Network Configuration Type Identifiers (Root Endpoint only)
 static const uint16_t TID_NW_MAC_ADDRESS        = 0x0501;  // Physical MAC address (0/6 bytes)
@@ -144,6 +148,7 @@ static const uint16_t TID_RT_ROLE_CAPABILITY    = 0x0609;  // Role bitfield: Bit
 static const uint16_t TID_RT_REBOOT             = 0x060A;  // Reboot command with BOOT magic (5 bytes)
 static const uint16_t TID_RT_MODEL_NAME         = 0x060B;  // Product model UTF-8 string, max 64 bytes (0/1-64 bytes)
 static const uint16_t TID_RT_SCOPE              = 0x060C;  // Operational URI scope UTF-8 string, max 32 bytes (0/1-32 bytes)
+static const uint16_t TID_RT_OTW_CAPABILITY     = 0x060D;  // OTW onboarding capability (0/3 bytes)
 
 // Section 11.7 - Data Endpoint Type Identifiers (Data Endpoints 1-N only)
 static const uint16_t TID_EP_UNIVERSE           = 0x0901;  // Assigned universe 1-63999, 0=unset (0/2 bytes)
@@ -157,6 +162,11 @@ static const uint16_t TID_EP_STATUS             = 0x0907;  // Endpoint health bi
 static const uint16_t TID_EP_FAILOVER           = 0x0908;  // Endpoint stream-loss failover mode + optional scene (0/3 bytes)
 static const uint16_t TID_EP_DMX_TIMING         = 0x0909;  // Endpoint DMX transmission mode and timing (0/2 bytes)
 static const uint16_t TID_EP_REFRESH_CAPABILITY = 0x090A;  // Endpoint max refresh capability in Hz (0/1 byte)
+static const uint16_t TID_EP_PROTOCOL           = 0x090B;  // Endpoint active input protocol (0/1 byte)
+static const uint16_t TID_EP_IDENTIFY           = 0x090C;  // Endpoint identify state (0/1 byte)
+
+// Additional sender/control identifiers
+static const uint16_t TID_OSC                   = 0x0204;  // OSC payload wrapper (variable)
 
 // Section 11.8 - Diagnostic Type Identifiers
 static const uint16_t TID_DG_SECURITY_EVENT     = 0xFF01;  // Security event report: EventCode+Counter+SourceIP (0/11-23 bytes)
@@ -169,18 +179,22 @@ static const uint8_t QUERY_CONFIG               = 0x01;
 static const uint8_t QUERY_FULL                 = 0x02;
 static const uint8_t QUERY_EXTENDED             = 0x03;
 
+// Broadcast endpoint: a poll/GET/SET addressed to 0xFFFF targets every
+// applicable endpoint on the node (Section 10.2.3).
+static const uint16_t BROADCAST_ENDPOINT        = 0xFFFF;
+
 //------------------------------------------------------------------------------
 // Network Configuration
 //------------------------------------------------------------------------------
 
 static const uint16_t SIGNET_UDP_PORT = 5683;  // Standard CoAP port
 
-// Multicast address range: 239.254.0.1 - 239.254.0.100
+// Multicast address range: 239.254.0.1 - 239.254.0.109
 static const uint8_t MULTICAST_BASE_OCTET_0 = 239;
 static const uint8_t MULTICAST_BASE_OCTET_1 = 254;
 static const uint8_t MULTICAST_BASE_OCTET_2 = 0;
 static const uint8_t MULTICAST_MIN_INDEX    = 1;
-static const uint8_t MULTICAST_MAX_INDEX    = 100;
+static const uint8_t MULTICAST_MAX_INDEX    = 109;
 
 // Multicast TTL (Time To Live)
 static const uint8_t MULTICAST_TTL = 32;
@@ -231,6 +245,7 @@ static const char* SIGNET_URI_LEVEL     = "level";     // For TID_LEVEL messages
 static const char* SIGNET_URI_PRIORITY  = "priority";  // For TID_PRIORITY messages
 static const char* SIGNET_URI_SYNC      = "sync";      // For TID_SYNC messages
 static const char* SIGNET_URI_NODE      = "node";      // For /node/{tuid}/{endpoint} messages
+static const char* SIGNET_URI_NODE_LOST = "node_lost"; // For /node_lost/{tuid} Lost-Mode messages
 static const char* SIGNET_URI_POLL      = "poll";      // For /poll discovery messages
 
 // Fixed administrative multicast addresses (Appendix A)
@@ -304,19 +319,26 @@ static const char* TEST_K0 = "52fcc2e7749f40358ba00b1d557dc11861e89868e139f23014
 static const char* TEST_PASSPHRASE = "Ge2p$E$4*A";
 
 //------------------------------------------------------------------------------
-// Test TUID for Development/Testing
-// Format: Manufacturer Code (2 bytes) + Device ID (4 bytes)
-// 'S' 'L' (Singularity) = 0x534C + 000001
 //------------------------------------------------------------------------------
-static const char* TEST_TUID = "534C00000001";
+// Manufacturer identity - SINGLE SOURCE OF TRUTH.
+// ESTA Manufacturer ID for Singularity (UK) Ltd: 'S' (0x53) 'y' (0x79) = 0x5379.
+// Every SoemCode and TUID manufacturer prefix MUST derive from this constant -
+// never hard-code the manufacturer ID anywhere else.
+//------------------------------------------------------------------------------
+static const uint16_t SIGNET_MANUFACTURER_ID = 0x5379;
+
+// Test TUID for Development/Testing.
+// Format: Manufacturer ID (2 bytes) + Device ID (4 bytes) = 0x5379 + 00000001.
+// (Must match SIGNET_MANUFACTURER_ID above.)
+static const char* TEST_TUID = "537900000001";
 
 //------------------------------------------------------------------------------
-// SoemCode Assignments (Manufacturer + Product Variant)
+// SoemCode Assignments = (SIGNET_MANUFACTURER_ID << 16) | Product Variant
 //------------------------------------------------------------------------------
-static const uint32_t SoemCodeNetWorkshop = 0x534c0001;
-static const uint32_t SoemCodeSdkLevelTx  = 0x534c0010;
-static const uint32_t SoemCodeSdkPoller   = 0x534c0011;
-static const uint32_t SoemCodeSdkNode     = 0x534c0012;
+static const uint32_t SoemCodeNetWorkshop = ((uint32_t)SIGNET_MANUFACTURER_ID << 16) | 0x0001;
+static const uint32_t SoemCodeSdkLevelTx  = ((uint32_t)SIGNET_MANUFACTURER_ID << 16) | 0x0010;
+static const uint32_t SoemCodeSdkPoller   = ((uint32_t)SIGNET_MANUFACTURER_ID << 16) | 0x0011;
+static const uint32_t SoemCodeSdkNode     = ((uint32_t)SIGNET_MANUFACTURER_ID << 16) | 0x0012;
 
 //------------------------------------------------------------------------------
 // Role Capability Bit Positions (TID_RT_ROLE_CAPABILITY, Section 11.6.9)
@@ -400,7 +422,8 @@ enum Ipv6Mode {
 // TID_RT_MULT / TID_RT_MULT_OVERRIDE global routing state values (Section 11.6.6)
 enum MultRoutingState {
 	MULT_STATE_DEFAULT = 0x00,  // All endpoints using default folded multicast pool
-	MULT_STATE_CUSTOM  = 0x01   // One or more endpoints using a custom multicast IP override
+	MULT_STATE_CUSTOM  = 0x01,  // One or more endpoints using a custom multicast IP override
+	MULT_STATE_MAX     = 0x02   // First out-of-range value (one past last valid); widens enum range so bad-value SET casts are not truncated
 };
 
 // TID_RT_IDENTIFY state byte values (Section 11.6.7)
@@ -408,7 +431,9 @@ enum IdentifyState {
 	IDENTIFY_OFF    = 0x00,  // Normal operation
 	IDENTIFY_SUBTLE = 0x01,  // Subtle: safe for show conditions
 	IDENTIFY_FULL   = 0x02,  // Full: obvious identification
-	IDENTIFY_MUTE   = 0x03   // Mute: suppress all indicators (dark-sky)
+	IDENTIFY_MUTE   = 0x03,  // Mute: suppress all indicators (dark-sky)
+	IDENTIFY_UNMUTE = 0x04,  // Unmute: release a previously applied mute
+	IDENTIFY_MAX    = 0x05   // First out-of-range value (one past last valid); widens enum range so bad-value SET casts are not truncated
 };
 
 // TID_RT_REBOOT command type byte values (Section 11.6.10)

@@ -50,7 +50,7 @@
 TFormSigNetTx *FormSigNetTx;
 
 #define APP_VERSION_MAJOR 0
-#define APP_VERSION_MINOR 5
+#define APP_VERSION_MINOR 6
 #define APP_VERSION_ID ((APP_VERSION_MAJOR << 8) | APP_VERSION_MINOR)
 
 static void SetLabelsTransparentRecursive(TWinControl* root)
@@ -248,7 +248,7 @@ void __fastcall TFormSigNetTx::FormCreate(TObject *Sender)
     ApplyScopeFromUI();
 
     EditAnnounceVersionNum->Text = IntToStr(APP_VERSION_ID);
-	EditAnnounceVersionString->Text = "v0.16 Spec";
+	EditAnnounceVersionString->Text = "v1.08 Spec";
     EditAnnounceMfgCode->Text = String().sprintf(L"0x%04x", (unsigned int)((SigNet::SoemCodeSdkLevelTx >> 16) & 0xFFFF));
     EditAnnounceProductVariant->Text = String().sprintf(L"0x%04x", (unsigned int)(SigNet::SoemCodeSdkLevelTx & 0xFFFF));
     
@@ -776,7 +776,7 @@ bool TFormSigNetTx::SendAnnouncePacket()
         mfg_code = static_cast<uint16_t>(StrToInt(mfg_code_text));
     }
     catch (...) {
-        LogError("Manufacturer code must be valid hex (e.g. 534c or 0x534c)");
+        LogError("Manufacturer code must be valid hex (e.g. 5379 or 0x5379)");
         error_count++;
         return false;
     }

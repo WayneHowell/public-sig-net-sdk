@@ -159,6 +159,8 @@ inline bool ExtractPayload(const uint8_t* packet,
 
 inline const uint8_t* SelectValidationKey(const char* uri,
                                           const uint8_t* manager_global_key,
+                                          const uint8_t* manager_local_key,
+                                          const uint8_t* citizen_key,
                                           const uint8_t* sender_key)
 {
     if (!uri) {
@@ -168,13 +170,244 @@ inline const uint8_t* SelectValidationKey(const char* uri,
     if (strstr(uri, "/poll") != 0) {
         return manager_global_key;
     }
-    if (strstr(uri, "/node/") != 0) {
-        return manager_global_key;
+    if (strstr(uri, "/manager/") != 0) {
+        return manager_local_key;
     }
-    if (strstr(uri, "/level/") != 0 || strstr(uri, "/priority/") != 0 || strstr(uri, "/sync") != 0) {
+    if (strstr(uri, "/node/") != 0) {
+        return citizen_key;
+    }
+    if (strstr(uri, "/level/") != 0 || strstr(uri, "/priority/") != 0 ||
+        strstr(uri, "/sync") != 0 || strstr(uri, "/timecode/") != 0 ||
+        strstr(uri, "/preview/") != 0 || strstr(uri, "/aux/") != 0) {
         return sender_key;
     }
-    return manager_global_key;
+    return 0;
+}
+
+inline bool TryParseTargetUriEndpoint(const char* uri, uint16_t& endpoint_out)
+{
+    endpoint_out = 0;
+    if (!uri) {
+        return false;
+    }
+
+    const char* node_ptr = strstr(uri, "/node/");
+    const char* manager_ptr = strstr(uri, "/manager/");
+    if (!node_ptr && !manager_ptr) {
+        return false;
+    }
+
+    const char* endpoint_ptr = strrchr(uri, '/');
+    if (!endpoint_ptr || *(endpoint_ptr + 1) == 0) {
+        return false;
+    }
+
+    endpoint_ptr++;
+    uint32_t parsed = 0;
+    while (*endpoint_ptr != 0) {
+        if (*endpoint_ptr < '0' || *endpoint_ptr > '9') {
+            return false;
+        }
+        parsed = (parsed * 10U) + static_cast<uint32_t>(*endpoint_ptr - '0');
+        if (parsed > 65535U) {
+            return false;
+        }
+        endpoint_ptr++;
+    }
+
+    endpoint_out = static_cast<uint16_t>(parsed);
+    return true;
+}
+
+inline bool IsTidAllowedForIncomingEndpoint(uint16_t tid, uint16_t endpoint)
+{
+    bool is_root_ep = (endpoint == 0);
+    bool is_data_ep = !is_root_ep;
+    return SigNet::Node::IsTidAllowedForEndpoint(tid, is_root_ep, is_data_ep);
+}
+
+inline bool IsTidAllowedForUriLane(const char* uri, uint16_t tid)
+{
+    if (!uri) {
+        return false;
+    }
+
+    if (strstr(uri, "/poll") != 0) {
+        return (tid == SigNet::TID_POLL);
+    }
+
+    if (strstr(uri, "/manager/") != 0) {
+        if (tid == SigNet::TID_LEVEL || tid == SigNet::TID_PRIORITY ||
+            tid == SigNet::TID_SYNC || tid == SigNet::TID_TIMECODE ||
+            tid == SigNet::TID_OSC) {
+            return false;
+        }
+        return true;
+    }
+
+    if (strstr(uri, "/node/") != 0) {
+        return false;
+    }
+
+    if (strstr(uri, "/level/") != 0) {
+        return (tid == SigNet::TID_LEVEL);
+    }
+    if (strstr(uri, "/priority/") != 0) {
+        return (tid == SigNet::TID_PRIORITY);
+    }
+    if (strstr(uri, "/sync") != 0) {
+        return (tid == SigNet::TID_SYNC);
+    }
+    if (strstr(uri, "/timecode/") != 0) {
+        return (tid == SigNet::TID_TIMECODE);
+    }
+    if (strstr(uri, "/aux/") != 0) {
+        return (tid == SigNet::TID_OSC);
+    }
+
+    return false;
+}
+
+struct SessionTrackEntry {
+    bool used;
+    uint8_t sender_tuid[6];
+    uint32_t session_id;
+    uint32_t last_seen_ms;
+};
+
+struct SequenceTrackEntry {
+    bool used;
+    uint8_t sender_id[8];
+    uint32_t session_id;
+    uint32_t sequence_num;
+    uint32_t last_seen_ms;
+};
+
+struct FreshnessTracker {
+    SessionTrackEntry session_tracks[32];
+    SequenceTrackEntry sequence_tracks[32];
+};
+
+inline void ResetFreshnessTracker(FreshnessTracker& tracker)
+{
+    memset(&tracker, 0, sizeof(tracker));
+}
+
+inline int FindSessionTrack(const FreshnessTracker& tracker, const uint8_t sender_tuid[6])
+{
+    int i;
+    for (i = 0; i < 32; ++i) {
+        if (tracker.session_tracks[i].used && memcmp(tracker.session_tracks[i].sender_tuid, sender_tuid, 6) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+inline int FindSequenceTrack(const FreshnessTracker& tracker, const uint8_t sender_id[8])
+{
+    int i;
+    for (i = 0; i < 32; ++i) {
+        if (tracker.sequence_tracks[i].used && memcmp(tracker.sequence_tracks[i].sender_id, sender_id, 8) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+inline int AcquireSessionTrackSlot(const FreshnessTracker& tracker, uint32_t now_ms)
+{
+    int i;
+    int oldest_index = -1;
+    uint32_t oldest_age = 0;
+    for (i = 0; i < 32; ++i) {
+        if (!tracker.session_tracks[i].used) {
+            return i;
+        }
+        uint32_t age = now_ms - tracker.session_tracks[i].last_seen_ms;
+        if (age > oldest_age) {
+            oldest_age = age;
+            oldest_index = i;
+        }
+    }
+
+    if (oldest_index >= 0 && oldest_age >= 3600000UL) {
+        return oldest_index;
+    }
+    return -1;
+}
+
+inline int AcquireSequenceTrackSlot(const FreshnessTracker& tracker, uint32_t now_ms)
+{
+    int i;
+    int oldest_index = -1;
+    uint32_t oldest_age = 0;
+    for (i = 0; i < 32; ++i) {
+        if (!tracker.sequence_tracks[i].used) {
+            return i;
+        }
+        uint32_t age = now_ms - tracker.sequence_tracks[i].last_seen_ms;
+        if (age > oldest_age) {
+            oldest_age = age;
+            oldest_index = i;
+        }
+    }
+
+    if (oldest_index >= 0 && oldest_age >= 3600000UL) {
+        return oldest_index;
+    }
+    return -1;
+}
+
+inline bool ValidateAndCommitFreshness(FreshnessTracker& tracker,
+                                       const SigNet::SigNetOptions& options,
+                                       uint32_t now_ms)
+{
+    const uint8_t* sender_tuid = options.sender_id;
+
+    int session_index = FindSessionTrack(tracker, sender_tuid);
+    if (session_index >= 0) {
+        if (options.session_id < tracker.session_tracks[session_index].session_id) {
+            return false;
+        }
+    } else {
+        session_index = AcquireSessionTrackSlot(tracker, now_ms);
+        if (session_index < 0) {
+            return false;
+        }
+        tracker.session_tracks[session_index].used = true;
+        memcpy(tracker.session_tracks[session_index].sender_tuid, sender_tuid, 6);
+        tracker.session_tracks[session_index].session_id = 0;
+    }
+
+    int sequence_index = FindSequenceTrack(tracker, options.sender_id);
+    if (sequence_index >= 0) {
+        if (options.session_id < tracker.sequence_tracks[sequence_index].session_id) {
+            return false;
+        }
+        if (options.session_id == tracker.sequence_tracks[sequence_index].session_id &&
+            options.seq_num <= tracker.sequence_tracks[sequence_index].sequence_num) {
+            return false;
+        }
+    } else {
+        sequence_index = AcquireSequenceTrackSlot(tracker, now_ms);
+        if (sequence_index < 0) {
+            return false;
+        }
+        tracker.sequence_tracks[sequence_index].used = true;
+        memcpy(tracker.sequence_tracks[sequence_index].sender_id, options.sender_id, 8);
+        tracker.sequence_tracks[sequence_index].session_id = 0;
+        tracker.sequence_tracks[sequence_index].sequence_num = 0;
+    }
+
+    tracker.session_tracks[session_index].session_id = options.session_id;
+    tracker.session_tracks[session_index].last_seen_ms = now_ms;
+
+    tracker.sequence_tracks[sequence_index].session_id = options.session_id;
+    tracker.sequence_tracks[sequence_index].sequence_num = options.seq_num;
+    tracker.sequence_tracks[sequence_index].last_seen_ms = now_ms;
+
+    return true;
 }
 
 } // namespace Node

@@ -389,10 +389,14 @@ int32_t ParseSigNetOptions(
                 break;
                 
             case SIGNET_OPTION_HMAC:
-                if (option_length != HMAC_SHA256_LENGTH) {
+                options.auth_length = option_length;
+                if (option_length == HMAC_SHA256_LENGTH) {
+                    memcpy(options.hmac, option_value, HMAC_SHA256_LENGTH);
+                } else if (option_length == 0) {
+                    memset(options.hmac, 0, HMAC_SHA256_LENGTH);
+                } else {
                     return SIGNET_ERROR_INVALID_OPTION;
                 }
-                memcpy(options.hmac, option_value, HMAC_SHA256_LENGTH);
                 found_hmac = true;
                 break;
         }
@@ -400,18 +404,27 @@ int32_t ParseSigNetOptions(
         current_option = option_num;
     }
     
-    // Verify all required options were present
-    // (Except for Security-Mode 0xFF beacons which may have missing fields)
+    // Verify all fixed Sig-Net options are present.
     if (!found_security_mode) {
         return SIGNET_ERROR_INVALID_OPTION;
     }
-    
-    // For normal packets (not beacons), all options are required
-    if (options.security_mode != 0xFF) {
-        if (!found_sender_id || !found_mfg_code || !found_session_id || 
-            !found_seq_num || !found_hmac) {
+
+    if (!found_sender_id || !found_mfg_code || !found_session_id ||
+        !found_seq_num || !found_hmac) {
+        return SIGNET_ERROR_INVALID_OPTION;
+    }
+
+    if (options.security_mode == SECURITY_MODE_HMAC_SHA256) {
+        if (options.auth_length != HMAC_SHA256_LENGTH) {
             return SIGNET_ERROR_INVALID_OPTION;
         }
+    } else if (options.security_mode == SECURITY_MODE_OPEN ||
+               options.security_mode == SECURITY_MODE_UNPROVISIONED) {
+        if (options.auth_length != 0) {
+            return SIGNET_ERROR_INVALID_OPTION;
+        }
+    } else {
+        return SIGNET_ERROR_INVALID_OPTION;
     }
     
     return SIGNET_SUCCESS;
