@@ -20,13 +20,11 @@ struct UdpGroupState {
     bool joined_manager_send_group;
     bool joined_ep1_universe_group;
     char ep1_multicast_ip[16];
-    uint16_t cached_ep1_universe;  // 0 = invalid
 
     UdpGroupState()
         : joined_manager_poll_group(false)
         , joined_manager_send_group(false)
         , joined_ep1_universe_group(false)
-        , cached_ep1_universe(0)
     {
         ep1_multicast_ip[0] = 0;
     }
@@ -47,7 +45,6 @@ inline void ResetUdpGroupState(UdpGroupState& groups)
     groups.joined_manager_send_group = false;
     groups.joined_ep1_universe_group = false;
     groups.ep1_multicast_ip[0] = 0;
-    groups.cached_ep1_universe = 0;
 }
 
 inline bool ExtractValidIPv4FromText(const char* source, char* out_ip, size_t out_len)
@@ -417,14 +414,6 @@ inline void RefreshReceiverGroups(SOCKET udp_socket,
                                                     : "Manager send group status: not joined");
     }
 
-    // Same universe as last refresh — skip the IP recompute.
-    if (groups.joined_ep1_universe_group &&
-        ep1_universe == groups.cached_ep1_universe &&
-        ep1_universe != 0)
-    {
-        return;
-    }
-
     char desired_ip[16];
     desired_ip[0] = 0;
     if (SigNet::CalculateMulticastAddress(ep1_universe, desired_ip) != SigNet::SIGNET_SUCCESS) {
@@ -446,7 +435,6 @@ inline void RefreshReceiverGroups(SOCKET udp_socket,
             strncpy(groups.ep1_multicast_ip, desired_ip, sizeof(groups.ep1_multicast_ip) - 1);
             groups.ep1_multicast_ip[sizeof(groups.ep1_multicast_ip) - 1] = 0;
             groups.joined_ep1_universe_group = true;
-            groups.cached_ep1_universe = ep1_universe;
 
             char msg[128];
             sprintf(msg, "EP1 universe group status: joined %s", desired_ip);
