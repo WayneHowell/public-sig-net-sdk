@@ -250,7 +250,7 @@ inline bool IsTidAllowedForUriLane(const char* uri, uint16_t tid)
     }
 
     if (strstr(uri, "/level/") != 0) {
-        return (tid == SigNet::TID_LEVEL);
+        return (tid == SigNet::TID_LEVEL || tid == SigNet::TID_PRIORITY);
     }
     if (strstr(uri, "/priority/") != 0) {
         return (tid == SigNet::TID_PRIORITY);

@@ -51,7 +51,7 @@
 TFormSigNetNode *FormSigNetNode;
 
 #define APP_VERSION_MAJOR 0
-#define APP_VERSION_MINOR 6
+#define APP_VERSION_MINOR 7
 #define APP_VERSION_ID ((APP_VERSION_MAJOR << 8) | APP_VERSION_MINOR)
 
 // SET application results (spec 10.4.x transaction paths).
@@ -68,6 +68,9 @@ static const uint32_t NODE_LOST_THRESHOLD_MS  = POLL_TIME_MS * NODE_LOST_TIMEOUT
 // Spec 11.8.1: proactive TID_DG_SECURITY_EVENT multicasts are rate-limited to a
 // maximum of one packet per second per Event Code.
 static const uint32_t SECURITY_EVENT_MIN_INTERVAL_MS = 1000;
+
+// TID_EP_MULT_OVERRIDE is an IPv4 address.
+static const uint16_t MULT_OVERRIDE_BYTES = 4;
 
 static void SecureZeroBuffer(void* ptr, size_t len)
 {
@@ -105,6 +108,7 @@ __fastcall TFormSigNetNode::TFormSigNetNode(TComponent* Owner)
     last_poll_reply_data = true;
     suppress_ui_change_events = false;
     SigNet::Node::ResetFreshnessTracker(node_freshness_tracker);
+    SigNet::Node::ResetLevelMerge(level_merge);
 
     memset(security_event_counts, 0, sizeof(security_event_counts));
     memset(security_event_src_ip, 0, sizeof(security_event_src_ip));
@@ -596,14 +600,75 @@ void TFormSigNetNode::RefreshReceiverGroups()
         EditNicIP->Text = String(nic_ip);
     }
 
+    // A non-zero TID_EP_MULT_OVERRIDE replaces the default folded address (spec 7.x).
+    char override_ip[16];
+    override_ip[0] = 0;
+    const SigNet::TidDataBlob& mult_blob = node_user_data.ep1.tid_ep_mult_override;
+    if (mult_blob.length == MULT_OVERRIDE_BYTES && mult_blob.data.bytes[0] != 0) {
+        sprintf(override_ip, "%u.%u.%u.%u",
+                mult_blob.data.bytes[0], mult_blob.data.bytes[1],
+                mult_blob.data.bytes[2], mult_blob.data.bytes[3]);
+    }
+
     uint16_t ep1_universe = static_cast<uint16_t>(SpinUniverse->Value);
     SigNet::Node::RefreshReceiverGroups(udp_socket,
                                         socket_initialized,
                                         nic_ip,
                                         ep1_universe,
+                                        override_ip,
                                         udp_groups,
                                         TFormSigNetNode::UdpLogThunk,
                                         this);
+}
+
+// Keeps the multicast routing state consistent after a SET transaction
+// (spec 7.x Multicast Override):
+//  - a TID_EP_UNIVERSE SET without a TID_EP_MULT_OVERRIDE in the same packet
+//    reverts the endpoint to the default folded address;
+//  - a TID_RT_MULT SET of MULT_STATE_DEFAULT clears every endpoint override;
+//  - TID_RT_MULT always reports MULT_STATE_CUSTOM while any endpoint is overridden.
+void TFormSigNetNode::ApplyMultRouting(const uint16_t* set_tids, int set_tid_count)
+{
+    bool universe_set = false;
+    bool override_set = false;
+    bool root_mult_default_set = false;
+    int i;
+
+    for (i = 0; i < set_tid_count; ++i) {
+        if (set_tids[i] == SigNet::TID_EP_UNIVERSE) {
+            universe_set = true;
+        } else if (set_tids[i] == SigNet::TID_EP_MULT_OVERRIDE) {
+            override_set = true;
+        } else if (set_tids[i] == SigNet::TID_RT_MULT) {
+            root_mult_default_set = (node_user_data.root.tid_rt_mult.length == 1 &&
+                                     node_user_data.root.tid_rt_mult.data.bytes[0] == SigNet::MULT_STATE_DEFAULT);
+        }
+    }
+
+    if ((universe_set && !override_set) || root_mult_default_set) {
+        StoreBlobFromBytes(node_user_data.ep1.tid_ep_mult_override,
+                           SigNet::TID_EP_MULT_OVERRIDE,
+                           SigNet::Node::DEFAULT_EP1_MULT_OVERRIDE,
+                           MULT_OVERRIDE_BYTES,
+                           SigNet::TID_BLOB_BYTES);
+    }
+
+    // A bare TID_RT_MULT SET (not Default) leaves the held value alone so the
+    // Set-Response echoes exactly what the manager wrote.
+    if (universe_set || override_set || root_mult_default_set) {
+        uint8_t mult_state = SigNet::MULT_STATE_DEFAULT;
+        const SigNet::TidDataBlob& mult_blob = node_user_data.ep1.tid_ep_mult_override;
+        if (mult_blob.length == MULT_OVERRIDE_BYTES && mult_blob.data.bytes[0] != 0) {
+            mult_state = SigNet::MULT_STATE_CUSTOM;
+        }
+        StoreBlobFromBytes(node_user_data.root.tid_rt_mult,
+                           SigNet::TID_RT_MULT,
+                           &mult_state,
+                           1,
+                           SigNet::TID_BLOB_U8);
+    }
+
+    RefreshReceiverGroups();
 }
 
 void __fastcall TFormSigNetNode::ReceiveTimerTick(TObject *Sender)
@@ -918,7 +983,7 @@ void TFormSigNetNode::InitializeNodeUserDataFromUI()
                            SigNet::TID_BLOB_BYTES);
     }
 
-    // --- EP1: DIRECTION (bits 0..1 = direction, bit 2 = RDM enable) ---
+    // --- EP1: DIRECTION (bits 0..1 = direction; RDM is not supported by this node) ---
     {
         StoreBlobFromBytes(node_user_data.ep1.tid_ep_direction,
                            SigNet::TID_EP_DIRECTION,
@@ -959,8 +1024,8 @@ void TFormSigNetNode::InitializeNodeUserDataFromUI()
         StoreBlobFromBytes(node_user_data.ep1.tid_ep_capability,
                            SigNet::TID_EP_CAPABILITY,
                            SigNet::Node::DEFAULT_EP1_CAPABILITY,
-                           1,
-                           SigNet::TID_BLOB_U8);
+                           SigNet::Node::DEFAULT_EP1_CAPABILITY_LEN,
+                           SigNet::TID_BLOB_BYTES);
     }
 
     // --- EP1: REFRESH_CAPABILITY ---
@@ -988,30 +1053,6 @@ void TFormSigNetNode::InitializeNodeUserDataFromUI()
                            SigNet::Node::DEFAULT_EP1_PROTOCOL,
                            1,
                            SigNet::TID_BLOB_U8);
-    }
-
-    // --- EP1: RDM_TOD_BACKGROUND ---
-    {
-        StoreBlobFromBytes(node_user_data.ep1.tid_rdm_port_config,
-                           SigNet::TID_RDM_PORT_CONFIG,
-                           SigNet::Node::DEFAULT_RDM_PORT_CONFIG,
-                           1,
-                           SigNet::TID_BLOB_U8);
-    }
-
-    // --- EP1: RDM_FLOW_CONTROL ---
-    {
-        StoreBlobFromBytes(node_user_data.ep1.tid_rdm_flow_control,
-                           SigNet::TID_RDM_FLOW_CONTROL,
-                           SigNet::Node::DEFAULT_RDM_FLOW_CONTROL,
-                           2,
-                           SigNet::TID_BLOB_BYTES);
-    }
-
-    // --- EP1: RDM_TOD_DATA ---
-    {
-        StoreBlobFromBytes(node_user_data.ep1.tid_rdm_tod_data,
-                           SigNet::TID_RDM_TOD_DATA, 0, 0, SigNet::TID_BLOB_BYTES);
     }
 
     SigNet::Node::ClearAllManagerStaleFlags(node_user_data);
@@ -1934,6 +1975,13 @@ bool TFormSigNetNode::SendStaleResponseForEndpoint(uint16_t reply_endpoint, cons
 
 void TFormSigNetNode::ProcessIncomingPacket(const uint8_t* packet, uint16_t packet_len, const sockaddr_in& source_addr)
 {
+    // Before Go Live the node must be completely silent: the socket is already open
+    // and drained so the OS buffer does not back up, but nothing is processed and
+    // therefore nothing (poll reply, GET/SET reply, security event) is transmitted.
+    if (!node_is_live) {
+        return;
+    }
+
     rx_packet_counter++;
 
     if (!ApplyScopeFromUI()) {
@@ -2117,6 +2165,7 @@ void TFormSigNetNode::ProcessIncomingPacket(const uint8_t* packet, uint16_t pack
     int set_tid_count = 0;
     bool set_any_persistent = false;
     bool set_transaction_invalid = false;
+    bool level_dirty = false;
     uint16_t set_reply_endpoint = uri_endpoint;
 
     while (payload_reader.GetRemaining() >= 4) {
@@ -2132,6 +2181,7 @@ void TFormSigNetNode::ProcessIncomingPacket(const uint8_t* packet, uint16_t pack
 
         switch (tlv.type_id) {
             case SigNet::TID_LEVEL:
+            case SigNet::TID_PRIORITY:
             {
                 uint16_t uri_universe = 0;
                 if (!SigNet::Node::ParseUniverseFromURI(uri, uri_universe)) {
@@ -2142,21 +2192,21 @@ void TFormSigNetNode::ProcessIncomingPacket(const uint8_t* packet, uint16_t pack
                     break;
                 }
 
-                uint8_t level_data[SigNet::MAX_DMX_SLOTS];
-                uint16_t slot_count = 0;
-                if (SigNet::Parse::ParseTID_LEVEL(tlv, level_data, slot_count) == SigNet::SIGNET_SUCCESS) {
-                    StoreBlobFromBytes(node_user_data.ep1.tid_level,
-                                       SigNet::TID_LEVEL,
-                                       level_data,
-                                       slot_count,
-                                       SigNet::TID_BLOB_BYTES);
-                    StoreBlobFromBytes(node_user_data.ep1.tid_dg_level_foldback,
-                                       SigNet::TID_DG_LEVEL_FOLDBACK,
-                                       level_data,
-                                       slot_count,
-                                       SigNet::TID_BLOB_BYTES);
-                    node_user_data.ep1.tid_level.ui_is_stale = true;
+                if (tlv.length < 1 || tlv.length > SigNet::MAX_DMX_SLOTS || !tlv.value) {
+                    break;
                 }
+
+                // Constrained Node Fallback (spec 10.x): one slot per sender; the
+                // first TID_PRIORITY byte is that sender's universe priority.
+                SigNet::Node::LevelSource* source =
+                    SigNet::Node::FindOrAllocLevelSource(level_merge, options.sender_id, GetTickCount());
+                if (tlv.type_id == SigNet::TID_PRIORITY) {
+                    source->priority = tlv.value[0];
+                } else {
+                    memcpy(source->levels, tlv.value, tlv.length);
+                    source->slot_count = tlv.length;
+                }
+                level_dirty = true;
                 break;
             }
 
@@ -2219,6 +2269,28 @@ void TFormSigNetNode::ProcessIncomingPacket(const uint8_t* packet, uint16_t pack
                 break;
             }
         }
+    }
+
+    if (level_dirty) {
+        uint8_t merged[SigNet::MAX_DMX_SLOTS];
+        uint16_t merged_count = SigNet::Node::MergeLevelSources(level_merge, GetTickCount(), merged);
+        if (merged_count > 0) {
+            StoreBlobFromBytes(node_user_data.ep1.tid_level,
+                               SigNet::TID_LEVEL,
+                               merged,
+                               merged_count,
+                               SigNet::TID_BLOB_BYTES);
+            StoreBlobFromBytes(node_user_data.ep1.tid_dg_level_foldback,
+                               SigNet::TID_DG_LEVEL_FOLDBACK,
+                               merged,
+                               merged_count,
+                               SigNet::TID_BLOB_BYTES);
+            node_user_data.ep1.tid_level.ui_is_stale = true;
+        }
+    }
+
+    if (set_tid_count > 0 && !set_transaction_invalid) {
+        ApplyMultRouting(set_tids, set_tid_count);
     }
 
     if (poll_triggered) {
@@ -2314,10 +2386,6 @@ void TFormSigNetNode::SyncUIFromStaleBlobs()
         node_user_data.ep1.tid_ep_failover.ui_is_stale = false;
     }
 
-    if (node_user_data.ep1.tid_rdm_port_config.ui_is_stale) {
-        node_user_data.ep1.tid_rdm_port_config.ui_is_stale = false;
-    }
-
     if (node_user_data.ep1.tid_ep_protocol.ui_is_stale) {
         node_user_data.ep1.tid_ep_protocol.ui_is_stale = false;
     }
@@ -2339,7 +2407,7 @@ void TFormSigNetNode::SyncUIFromStaleBlobs()
 //
 void TFormSigNetNode::SendStaleTIDsToManager()
 {
-    if (!keys_valid) {
+    if (!keys_valid || !node_is_live) {
         return;
     }
 

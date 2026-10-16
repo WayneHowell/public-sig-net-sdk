@@ -230,9 +230,6 @@ struct EP1TidStore {
     TidDataBlob tid_ep_dmx_timing;
     TidDataBlob tid_ep_refresh_capability;
     TidDataBlob tid_ep_protocol;
-    TidDataBlob tid_rdm_port_config;  // TID_RDM_PORT_CONFIG (0x0305) – 1 byte
-    TidDataBlob tid_rdm_flow_control;    // TID_RDM_FLOW_CONTROL (0x0306) – 2 bytes
-    TidDataBlob tid_rdm_tod_data;        // TID_RDM_TOD_DATA (0x0304) – [index,total,UIDs...]
     TidDataBlob tid_dg_level_foldback;   // TID_DG_LEVEL_FOLDBACK (0xFF03) – 1..512 bytes
 
     TidDataBlob tid_level;
@@ -251,9 +248,6 @@ struct EP1TidStore {
         tid_ep_dmx_timing.tid = TID_EP_DMX_TIMING;
         tid_ep_refresh_capability.tid = TID_EP_REFRESH_CAPABILITY;
         tid_ep_protocol.tid = TID_EP_PROTOCOL;
-        tid_rdm_port_config.tid = TID_RDM_PORT_CONFIG;
-        tid_rdm_flow_control.tid = TID_RDM_FLOW_CONTROL;
-        tid_rdm_tod_data.tid = TID_RDM_TOD_DATA;
         tid_dg_level_foldback.tid = TID_DG_LEVEL_FOLDBACK;
 
         tid_level.tid = TID_LEVEL;

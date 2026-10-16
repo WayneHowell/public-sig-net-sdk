@@ -47,6 +47,7 @@
 
 #include "sig-net-types.hpp"
 #include "sig-net-tlv.hpp"
+#include "sig-net-node-profile.hpp"
 #include <stdint.h>
 #include <string.h>
 
@@ -139,6 +140,38 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
                               const NodeUserData& data,
                               const NodeConfig& config,
                               PacketBuffer& payload_out);
+
+//------------------------------------------------------------------------------
+// Level merge (constrained node fallback, spec 10.x Merge)
+//
+// One slot per simultaneous TID_LEVEL sender on the endpoint's universe. Each
+// source carries a single universe-wide priority (the first byte of its latest
+// TID_PRIORITY). The merged output takes, per slot, the HTP value among the
+// sources of the highest priority.
+//------------------------------------------------------------------------------
+
+struct LevelSource {
+    bool     active;
+    uint8_t  sender_id[SENDER_ID_LENGTH];
+    uint32_t last_rx_tick;
+    uint8_t  priority;
+    uint16_t slot_count;
+    uint8_t  levels[MAX_DMX_SLOTS];
+};
+
+struct LevelMergeState {
+    LevelSource sources[EP1_MAX_MERGE_SOURCES];
+};
+
+void ResetLevelMerge(LevelMergeState& state);
+
+// Returns the slot for sender_id, allocating one if new (reusing an expired slot,
+// else evicting the least recently heard). Never returns 0.
+LevelSource* FindOrAllocLevelSource(LevelMergeState& state, const uint8_t* sender_id, uint32_t now_ms);
+
+// Writes the merged levels into out (MAX_DMX_SLOTS bytes) and returns the slot
+// count. Returns 0 when no source is active (caller keeps the previous output).
+uint16_t MergeLevelSources(LevelMergeState& state, uint32_t now_ms, uint8_t* out);
 
 } // namespace Node
 } // namespace SigNet

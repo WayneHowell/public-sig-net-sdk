@@ -116,7 +116,7 @@ int GetSupportedRootBlobCount()
 
 int GetSupportedDataBlobCount()
 {
-    return 17;
+    return 14;
 }
 
 TidDataBlob* GetSupportedRootBlobByIndex(NodeUserData& data, int index)
@@ -166,13 +166,10 @@ TidDataBlob* GetSupportedDataBlobByIndex(NodeUserData& data, int index)
         case 8: return &data.ep1.tid_ep_dmx_timing;
         case 9: return &data.ep1.tid_ep_refresh_capability;
         case 10: return &data.ep1.tid_ep_protocol;
-        case 11: return &data.ep1.tid_rdm_port_config;
-        case 12: return &data.ep1.tid_rdm_tod_data;
-        case 13: return &data.ep1.tid_rdm_flow_control;
-        case 14: return &data.ep1.tid_dg_level_foldback;
-        case 15: return &data.ep1.tid_level;
-        case 16: return &data.ep1.tid_priority;
-        case 17: return &data.ep1.tid_sync;
+        case 11: return &data.ep1.tid_dg_level_foldback;
+        case 12: return &data.ep1.tid_level;
+        case 13: return &data.ep1.tid_priority;
+        case 14: return &data.ep1.tid_sync;
         default: return 0;
     }
 }
@@ -349,24 +346,6 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
         }
     }
 
-    if (IsTidAllowedForEndpoint(TID_RDM_PORT_CONFIG, is_root_ep, is_data_ep)) {
-        result = AppendBlobOrDefault(payload_out, TID_RDM_PORT_CONFIG,
-                                     data.ep1.tid_rdm_port_config,
-                                     DEFAULT_RDM_PORT_CONFIG, 1);
-        if (result != SIGNET_SUCCESS) {
-            return result;
-        }
-    }
-
-    if (IsTidAllowedForEndpoint(TID_RDM_FLOW_CONTROL, is_root_ep, is_data_ep)) {
-        result = AppendBlobOrDefault(payload_out, TID_RDM_FLOW_CONTROL,
-                                     data.ep1.tid_rdm_flow_control,
-                                     DEFAULT_RDM_FLOW_CONTROL, 2);
-        if (result != SIGNET_SUCCESS) {
-            return result;
-        }
-    }
-
     if (IsTidAllowedForEndpoint(TID_EP_UNIVERSE, is_root_ep, is_data_ep)) {
         uint8_t default_universe[2] = {
             static_cast<uint8_t>(DEFAULT_EP1_UNIVERSE >> 8),
@@ -467,7 +446,7 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
     if (IsTidAllowedForEndpoint(TID_EP_CAPABILITY, is_root_ep, is_data_ep)) {
         result = AppendBlobOrDefault(payload_out, TID_EP_CAPABILITY,
                                      data.ep1.tid_ep_capability,
-                                     DEFAULT_EP1_CAPABILITY, 1);
+                                     DEFAULT_EP1_CAPABILITY, DEFAULT_EP1_CAPABILITY_LEN);
         if (result != SIGNET_SUCCESS) {
             return result;
         }
@@ -543,7 +522,7 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
     if (IsTidAllowedForEndpoint(TID_EP_CAPABILITY, is_root_ep, is_data_ep)) {
         result = AppendBlobOrDefault(payload_out, TID_EP_CAPABILITY,
                                      data.ep1.tid_ep_capability,
-                                     DEFAULT_EP1_CAPABILITY, 1);
+                                     DEFAULT_EP1_CAPABILITY, DEFAULT_EP1_CAPABILITY_LEN);
         if (result != SIGNET_SUCCESS) {
             return result;
         }
@@ -561,13 +540,114 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
     if (IsTidAllowedForEndpoint(TID_DG_SECURITY_EVENT, is_root_ep, is_data_ep)) {
         result = AppendBlobOrDefault(payload_out, TID_DG_SECURITY_EVENT,
                                      data.root.tid_dg_security_event,
-                                     DEFAULT_ROOT_SECURITY_EVENT, 1);
+                                     DEFAULT_ROOT_SECURITY_EVENT, DEFAULT_ROOT_SECURITY_EVENT_LEN);
         if (result != SIGNET_SUCCESS) {
             return result;
         }
     }
 
     return SIGNET_SUCCESS;
+}
+
+//------------------------------------------------------------------------------
+// Level merge
+//------------------------------------------------------------------------------
+
+void ResetLevelMerge(LevelMergeState& state)
+{
+    int i;
+    for (i = 0; i < EP1_MAX_MERGE_SOURCES; ++i) {
+        state.sources[i].active = false;
+        state.sources[i].last_rx_tick = 0;
+        state.sources[i].priority = LEVEL_DEFAULT_PRIORITY;
+        state.sources[i].slot_count = 0;
+        memset(state.sources[i].sender_id, 0, SENDER_ID_LENGTH);
+        memset(state.sources[i].levels, 0, MAX_DMX_SLOTS);
+    }
+}
+
+static bool LevelSourceExpired(const LevelSource& src, uint32_t now_ms)
+{
+    return (now_ms - src.last_rx_tick) > LEVEL_SOURCE_TIMEOUT_MS;
+}
+
+LevelSource* FindOrAllocLevelSource(LevelMergeState& state, const uint8_t* sender_id, uint32_t now_ms)
+{
+    int i;
+    int free_index = -1;
+    int oldest_index = 0;
+    uint32_t oldest_age = 0;
+
+    for (i = 0; i < EP1_MAX_MERGE_SOURCES; ++i) {
+        LevelSource& src = state.sources[i];
+        if (src.active && memcmp(src.sender_id, sender_id, SENDER_ID_LENGTH) == 0) {
+            src.last_rx_tick = now_ms;
+            return &src;
+        }
+        if (!src.active || LevelSourceExpired(src, now_ms)) {
+            if (free_index < 0) {
+                free_index = i;
+            }
+        } else {
+            uint32_t age = now_ms - src.last_rx_tick;
+            if (age >= oldest_age) {
+                oldest_age = age;
+                oldest_index = i;
+            }
+        }
+    }
+
+    int use = (free_index >= 0) ? free_index : oldest_index;
+    LevelSource& slot = state.sources[use];
+    slot.active = true;
+    memcpy(slot.sender_id, sender_id, SENDER_ID_LENGTH);
+    slot.last_rx_tick = now_ms;
+    slot.priority = LEVEL_DEFAULT_PRIORITY;
+    slot.slot_count = 0;
+    memset(slot.levels, 0, MAX_DMX_SLOTS);
+    return &slot;
+}
+
+uint16_t MergeLevelSources(LevelMergeState& state, uint32_t now_ms, uint8_t* out)
+{
+    int i;
+    uint16_t s;
+    bool any = false;
+    uint8_t top_priority = 0;
+    uint16_t out_count = 0;
+
+    for (i = 0; i < EP1_MAX_MERGE_SOURCES; ++i) {
+        const LevelSource& src = state.sources[i];
+        if (!src.active || src.slot_count == 0 || LevelSourceExpired(src, now_ms)) {
+            continue;
+        }
+        if (!any || src.priority > top_priority) {
+            top_priority = src.priority;
+        }
+        any = true;
+        if (src.slot_count > out_count) {
+            out_count = src.slot_count;
+        }
+    }
+
+    if (!any) {
+        return 0;
+    }
+
+    memset(out, 0, MAX_DMX_SLOTS);
+    for (i = 0; i < EP1_MAX_MERGE_SOURCES; ++i) {
+        const LevelSource& src = state.sources[i];
+        if (!src.active || src.slot_count == 0 || LevelSourceExpired(src, now_ms) ||
+            src.priority != top_priority) {
+            continue;
+        }
+        for (s = 0; s < src.slot_count; ++s) {
+            if (src.levels[s] > out[s]) {
+                out[s] = src.levels[s];
+            }
+        }
+    }
+    return out_count;
 }
 
 } // namespace Node

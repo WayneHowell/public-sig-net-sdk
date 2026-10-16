@@ -378,6 +378,7 @@ inline void RefreshReceiverGroups(SOCKET udp_socket,
                                   bool socket_initialized,
                                   const char* selected_nic_ip,
                                   uint16_t ep1_universe,
+                                  const char* mult_override_ip,
                                   UdpGroupState& groups,
                                   UdpLogCallback log_callback,
                                   void* user_context)
@@ -414,9 +415,14 @@ inline void RefreshReceiverGroups(SOCKET udp_socket,
                                                     : "Manager send group status: not joined");
     }
 
+    // A TID_EP_MULT_OVERRIDE address (non-empty) replaces the default folded address
+    // for the universe; the default group is left so the node stops listening there.
     char desired_ip[16];
     desired_ip[0] = 0;
-    if (SigNet::CalculateMulticastAddress(ep1_universe, desired_ip) != SigNet::SIGNET_SUCCESS) {
+    if (mult_override_ip && mult_override_ip[0] != 0) {
+        strncpy(desired_ip, mult_override_ip, sizeof(desired_ip) - 1);
+        desired_ip[sizeof(desired_ip) - 1] = 0;
+    } else if (SigNet::CalculateMulticastAddress(ep1_universe, desired_ip) != SigNet::SIGNET_SUCCESS) {
         return;
     }
 

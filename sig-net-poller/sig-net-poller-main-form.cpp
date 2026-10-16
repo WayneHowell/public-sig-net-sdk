@@ -51,7 +51,7 @@
 TFormSigNetPoller *FormSigNetPoller;
 
 #define APP_VERSION_MAJOR 0
-#define APP_VERSION_MINOR 6
+#define APP_VERSION_MINOR 7
 #define APP_VERSION_ID ((APP_VERSION_MAJOR << 8) | APP_VERSION_MINOR)
 
 static void SetLabelsTransparentRecursive(TWinControl* root)

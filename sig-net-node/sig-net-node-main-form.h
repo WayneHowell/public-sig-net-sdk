@@ -194,6 +194,7 @@ private:    // User declarations
 
     // Phase 2 shared user data model
     SigNet::NodeUserData node_user_data;
+    SigNet::Node::LevelMergeState level_merge;
 
     // Identity/session config (non-TID fields used by BuildNodeQueryPayload)
     SigNet::Node::NodeConfig node_config;
@@ -211,6 +212,7 @@ private:    // User declarations
     void ShutdownSocket();
     bool SendRawPacket(const uint8_t* packet, uint16_t packet_len, const char* destination_ip, const String& context_label);
     void RefreshReceiverGroups();
+    void ApplyMultRouting(const uint16_t* set_tids, int set_tid_count);
     void WarnIfLoopbackSelected();
     void __fastcall ReceiveTimerTick(TObject *Sender);
     static void UdpPacketThunk(const uint8_t* packet, uint16_t packet_len, const sockaddr_in& source_addr, void* user_context);

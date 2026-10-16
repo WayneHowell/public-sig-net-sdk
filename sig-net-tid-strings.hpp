@@ -332,9 +332,6 @@ inline bool IsTidAllowedForEndpoint(uint16_t tid, bool is_root_ep, bool is_data_
         case TID_EP_FAILOVER:
         case TID_EP_DMX_TIMING:
         case TID_EP_REFRESH_CAPABILITY:
-        case TID_RDM_PORT_CONFIG:
-        case TID_RDM_FLOW_CONTROL:
-        case TID_RDM_TOD_DATA:
         case TID_DG_LEVEL_FOLDBACK:
         case TID_LEVEL:
         case TID_PRIORITY:
