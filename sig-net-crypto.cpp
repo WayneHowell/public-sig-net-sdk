@@ -228,57 +228,146 @@ int32_t TUID_FromHexString(const char* hex_string, uint8_t* tuid) {
     return SIGNET_SUCCESS;
 }
 
-int32_t TUID_GenerateEphemeral(uint16_t mfg_code, uint8_t* tuid_out) {
+// Reads the 16-bit Manufacturer field and 32-bit Device ID of a TUID (big-endian).
+static void TuidSplit(const uint8_t* tuid, uint16_t& mfg_field, uint32_t& device_id)
+{
+    mfg_field = static_cast<uint16_t>((static_cast<uint16_t>(tuid[0]) << 8) | tuid[1]);
+    device_id = (static_cast<uint32_t>(tuid[2]) << 24) |
+                (static_cast<uint32_t>(tuid[3]) << 16) |
+                (static_cast<uint32_t>(tuid[4]) << 8)  |
+                 static_cast<uint32_t>(tuid[5]);
+}
+
+int32_t TUID_BuildType2Dynamic(uint16_t esta_man_id, uint32_t random_bits, uint8_t* tuid_out) {
     if (!tuid_out) {
         return SIGNET_ERROR_INVALID_ARG;
     }
-
-    // Generate 4 random bytes via Windows BCrypt CSPRNG
-    uint8_t rand_bytes[4];
-    NTSTATUS status = BCryptGenRandom(NULL, rand_bytes, 4, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-    if (!BCRYPT_SUCCESS(status)) {
-        return SIGNET_ERROR_CRYPTO;
+    // Type 2 Dynamic (Section 6.6, V1.21): Manufacturer field = ESTA ID | 0x8000,
+    // so the ESTA ID must leave the field inside 0x8001-0xFFFE.
+    const uint16_t mfg_field = static_cast<uint16_t>(esta_man_id | TUID_MFG_NOT_FACTORY);
+    if (esta_man_id < TUID_MFG_ESTA_MIN || esta_man_id > TUID_MFG_ESTA_MASK ||
+        mfg_field > TUID_MFG_NOT_FACTORY_MAX) {
+        return SIGNET_ERROR_INVALID_ARG;
     }
-
-    // Assemble as big-endian uint32_t
-    uint32_t device_id = ((uint32_t)rand_bytes[0] << 24)
-                       | ((uint32_t)rand_bytes[1] << 16)
-                       | ((uint32_t)rand_bytes[2] << 8)
-                       |  (uint32_t)rand_bytes[3];
-
-    // Force MSB=1 to place in ephemeral range (0x80000000–0xFFFFFFFF)
-    device_id |= 0x80000000u;
-
-    // Clamp away from reserved range 0xFFFFFFF0–0xFFFFFFFF
-    if (device_id >= 0xFFFFFFF0u) {
-        device_id = 0xFFFFFFEFu;
+    // Device ID = 31-bit payload with bit 31 clear; all ones (0x7FFFFFFF) is outside the range.
+    const uint32_t device_id = random_bits & DEVICE_ID_PAYLOAD_MASK;
+    if (device_id == DEVICE_ID_PAYLOAD_MASK) {
+        return SIGNET_ERROR_INVALID_ARG;
     }
-
-    // Encode: mfg_code (2 bytes big-endian) + device_id (4 bytes big-endian)
-    tuid_out[0] = (uint8_t)(mfg_code >> 8);
-    tuid_out[1] = (uint8_t)(mfg_code & 0xFF);
-    tuid_out[2] = (uint8_t)(device_id >> 24);
-    tuid_out[3] = (uint8_t)(device_id >> 16);
-    tuid_out[4] = (uint8_t)(device_id >> 8);
-    tuid_out[5] = (uint8_t)(device_id & 0xFF);
-
+    tuid_out[0] = static_cast<uint8_t>((mfg_field >> 8) & 0xFF);
+    tuid_out[1] = static_cast<uint8_t>(mfg_field & 0xFF);
+    tuid_out[2] = static_cast<uint8_t>((device_id >> 24) & 0xFF);
+    tuid_out[3] = static_cast<uint8_t>((device_id >> 16) & 0xFF);
+    tuid_out[4] = static_cast<uint8_t>((device_id >> 8) & 0xFF);
+    tuid_out[5] = static_cast<uint8_t>(device_id & 0xFF);
     return SIGNET_SUCCESS;
+}
+
+int32_t TUID_GenerateEphemeral(uint16_t esta_man_id, uint8_t* tuid_out) {
+    if (!tuid_out) {
+        return SIGNET_ERROR_INVALID_ARG;
+    }
+    // The only redraw is the all-ones payload (1 in 2^31), so a handful of draws
+    // is always enough; the limit just keeps the loop bounded.
+    static const int TUID_GEN_MAX_DRAWS = 8;
+    for (int draw = 0; draw < TUID_GEN_MAX_DRAWS; draw++) {
+        uint32_t random32 = 0;
+        NTSTATUS status = BCryptGenRandom(
+            NULL,
+            reinterpret_cast<PUCHAR>(&random32),
+            sizeof(random32),
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG
+        );
+        if (!BCRYPT_SUCCESS(status)) {
+            return SIGNET_ERROR_CRYPTO;
+        }
+        const int32_t result = TUID_BuildType2Dynamic(esta_man_id, random32, tuid_out);
+        if (result == SIGNET_SUCCESS) {
+            return SIGNET_SUCCESS;
+        }
+        if ((random32 & DEVICE_ID_PAYLOAD_MASK) != DEVICE_ID_PAYLOAD_MASK) {
+            return result;   // a bad esta_man_id: drawing again cannot help
+        }
+    }
+    return SIGNET_ERROR_CRYPTO;
+}
+
+TuidType TUID_GetType(const uint8_t* tuid) {
+    if (!tuid) {
+        return TUID_TYPE_INVALID;
+    }
+    uint16_t mfg_field = 0;
+    uint32_t device_id = 0;
+    TuidSplit(tuid, mfg_field, device_id);
+
+    // Bit 47 clear: Type 1 Static, ESTA ID 0x0001-0x7FFF, Device ID 0x00000001-0xFFFFFFFE.
+    if ((mfg_field & TUID_MFG_NOT_FACTORY) == 0) {
+        if (mfg_field < TUID_MFG_ESTA_MIN || device_id < DEVICE_ID_TYPE1_MIN || device_id > DEVICE_ID_TYPE1_MAX) {
+            return TUID_TYPE_INVALID;
+        }
+        return TUID_TYPE1_STATIC;
+    }
+    // Manufacturer field 0xFFFF: only the Reserved block 0xFFF00000-0xFFFFFFFE is defined.
+    if (mfg_field == TUID_MFG_RESERVED) {
+        return (device_id >= DEVICE_ID_RESERVED_MIN && device_id <= DEVICE_ID_RESERVED_MAX)
+            ? TUID_TYPE_RESERVED : TUID_TYPE_INVALID;
+    }
+    // Bit 47 set: field 0x8000 (ESTA ID 0) is not valid; the 31-bit payload may be
+    // anything but all ones, for both Type 2 (random) and Type 3 (OUI index + MAC).
+    if (mfg_field == TUID_MFG_NOT_FACTORY || (device_id & DEVICE_ID_PAYLOAD_MASK) == DEVICE_ID_PAYLOAD_MASK) {
+        return TUID_TYPE_INVALID;
+    }
+    return (device_id & DEVICE_ID_TYPE3_FLAG) ? TUID_TYPE3_MAC_DERIVED : TUID_TYPE2_DYNAMIC;
+}
+
+bool TUID_IsType2Dynamic(const uint8_t* tuid) {
+    return TUID_GetType(tuid) == TUID_TYPE2_DYNAMIC;
+}
+
+uint16_t TUID_GetEstaManId(const uint8_t* tuid) {
+    if (!tuid) {
+        return 0;
+    }
+    uint16_t mfg_field = 0;
+    uint32_t device_id = 0;
+    TuidSplit(tuid, mfg_field, device_id);
+    return static_cast<uint16_t>(mfg_field & TUID_MFG_ESTA_MASK);
+}
+
+const char* TUID_TypeName(TuidType type) {
+    switch (type) {
+        case TUID_TYPE1_STATIC:      return "Type 1 Static";
+        case TUID_TYPE2_DYNAMIC:     return "Type 2 Dynamic";
+        case TUID_TYPE3_MAC_DERIVED: return "Type 3 MAC-Derived";
+        case TUID_TYPE_RESERVED:     return "Reserved";
+        default:                     return "Invalid";
+    }
 }
 
 //------------------------------------------------------------------------------
 // Passphrase Validation Helpers (file-scope)
 //------------------------------------------------------------------------------
 
+// Sorts every character into one of the four classes of Section 7.2.3 (V1.18).
+// Symbols are every printable ASCII character that is not a letter or a digit,
+// space (0x20) included: 33 characters. A byte outside 0x20 to 0x7E is in no
+// class and makes chars_ok false; bad_char_index is the first such byte.
 static void ScanCharClasses(const char* p, uint32_t len,
-    bool& has_upper, bool& has_lower, bool& has_digit, bool& has_symbol)
+    bool& has_upper, bool& has_lower, bool& has_digit, bool& has_symbol,
+    bool& chars_ok, uint32_t& bad_char_index)
 {
     has_upper = has_lower = has_digit = has_symbol = false;
+    chars_ok = true;
+    bad_char_index = 0;
     for (uint32_t i = 0; i < len; i++) {
-        char c = p[i];
-        if      (c >= 'A' && c <= 'Z')           has_upper = true;
+        const uint8_t c = static_cast<uint8_t>(p[i]);
+        if (c < SigNet::PASSPHRASE_CHAR_MIN || c > SigNet::PASSPHRASE_CHAR_MAX) {
+            if (chars_ok) { chars_ok = false; bad_char_index = i; }
+        }
+        else if (c >= 'A' && c <= 'Z')           has_upper = true;
         else if (c >= 'a' && c <= 'z')           has_lower = true;
         else if (c >= '0' && c <= '9')           has_digit = true;
-        else if (strchr(SigNet::PASSPHRASE_SYMBOLS, c))  has_symbol = true;
+        else                                     has_symbol = true;
     }
 }
 
@@ -315,6 +404,8 @@ int32_t AnalysePassphrase(const char* passphrase, uint32_t passphrase_len,
 
     if (!passphrase || passphrase_len == 0) {
         checks->has_upper = checks->has_lower = checks->has_digit = checks->has_symbol = false;
+        checks->chars_ok       = true;
+        checks->bad_char_index = 0;
         checks->class_count  = 0;
         checks->classes_ok   = false;
         checks->no_identical  = true;
@@ -323,7 +414,8 @@ int32_t AnalysePassphrase(const char* passphrase, uint32_t passphrase_len,
     }
 
     ScanCharClasses(passphrase, passphrase_len,
-        checks->has_upper, checks->has_lower, checks->has_digit, checks->has_symbol);
+        checks->has_upper, checks->has_lower, checks->has_digit, checks->has_symbol,
+        checks->chars_ok, checks->bad_char_index);
     checks->class_count = (checks->has_upper  ? 1 : 0) + (checks->has_lower  ? 1 : 0) +
                           (checks->has_digit   ? 1 : 0) + (checks->has_symbol ? 1 : 0);
     checks->classes_ok  = (checks->class_count >= 3);
@@ -331,7 +423,9 @@ int32_t AnalysePassphrase(const char* passphrase, uint32_t passphrase_len,
     checks->no_identical  = !HasIdenticalRun(passphrase, passphrase_len);
     checks->no_sequential = !HasSequentialRun(passphrase, passphrase_len);
 
-    // First failing code (same priority order as the original ValidatePassphrase)
+    // First failing code (same priority order as the original ValidatePassphrase;
+    // a character outside 0x20 to 0x7E is reported first, V1.18)
+    if (!checks->chars_ok)      return SIGNET_PASSPHRASE_INVALID_CHARACTER;
     if (!checks->no_identical)  return SIGNET_PASSPHRASE_CONSECUTIVE_IDENTICAL;
     if (!checks->no_sequential) return SIGNET_PASSPHRASE_CONSECUTIVE_SEQUENTIAL;
     if (!checks->classes_ok)    return SIGNET_PASSPHRASE_INSUFFICIENT_CLASSES;
@@ -375,17 +469,20 @@ int32_t GetPassphraseValidationReport(const char* passphrase, uint32_t passphras
             status_line = "More than 2 identical characters in a row."; break;
         case SIGNET_PASSPHRASE_CONSECUTIVE_SEQUENTIAL:
             status_line = "More than 3 sequential characters in a row."; break;
+        case SIGNET_PASSPHRASE_INVALID_CHARACTER:
+            status_line = "Only printable ASCII characters (0x20 to 0x7E) are allowed."; break;
         default:
             status_line = "Passphrase not ready."; break;
     }
 
-    sprintf(report_output,
-        "Length: %d/10-64 | Classes: %d/4 (U:%s L:%s D:%s S:%s)\n"
+    snprintf(report_output, report_size,
+        "Length: %d/10-64 | Classes: %d/4 (U:%s L:%s D:%s S:%s) | Characters: %s\n"
         "No triple identical: %s | No 4-char sequence: %s\n"
         "%s",
         (int)ch.length, ch.class_count,
         ch.has_upper ? "Y" : "N", ch.has_lower ? "Y" : "N",
         ch.has_digit ? "Y" : "N", ch.has_symbol ? "Y" : "N",
+        ch.chars_ok      ? "OK" : "FAIL",
         ch.no_identical  ? "OK" : "FAIL",
         ch.no_sequential ? "OK" : "FAIL",
         status_line);

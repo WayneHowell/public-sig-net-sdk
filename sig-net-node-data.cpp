@@ -441,8 +441,9 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
         }
     }
 
-    // SNAC 578: TID_EP_CAPABILITY (0x0904) must appear in the EP CONFIG poll
-    // reply, so it is advertised at CONFIG tier (cumulative into FULL/EXTENDED).
+    // Section 11.9: TID_EP_CAPABILITY (0x0904, Section 11.7.4) must appear in the
+    // EP CONFIG poll reply, so it is advertised at CONFIG tier (cumulative into
+    // FULL/EXTENDED).
     if (IsTidAllowedForEndpoint(TID_EP_CAPABILITY, is_root_ep, is_data_ep)) {
         result = AppendBlobOrDefault(payload_out, TID_EP_CAPABILITY,
                                      data.ep1.tid_ep_capability,
@@ -533,8 +534,9 @@ int32_t BuildNodeQueryPayload(uint8_t query_level,
     }
 
     // ==========================================================================
-    // QUERY_EXTENDED tier (cumulative): diagnostic TIDs. SNAC 875 requires the
-    // root endpoint's EXTENDED poll reply to advertise TID_DG_SECURITY_EVENT.
+    // QUERY_EXTENDED tier (cumulative): diagnostic TIDs. Section 11.9 requires the
+    // root endpoint's EXTENDED poll reply to advertise TID_DG_SECURITY_EVENT
+    // (Section 11.8.1).
     // ==========================================================================
 
     if (IsTidAllowedForEndpoint(TID_DG_SECURITY_EVENT, is_root_ep, is_data_ep)) {

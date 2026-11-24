@@ -161,6 +161,137 @@ void TestCryptoModule(TestSuiteResults& results) {
                       passed, passed ? "" : "Should have detected 4+ sequential chars");
     }
     
+    // Test 6a: V1.18 Symbols class - space counts as a symbol (Section 7.2.3)
+    {
+        // "Lantern PX5" was valid before V1.18 too (upper, lower, digit); the
+        // all-lower form only reaches three classes because space is a symbol.
+        const char* mixed_pass = "Lantern PX5";
+        const char* lower_pass = "lantern px5";
+        Crypto::PassphraseChecks mixed_checks, lower_checks;
+        int32_t mixed_result = Crypto::AnalysePassphrase(mixed_pass, strlen(mixed_pass), &mixed_checks);
+        int32_t lower_result = Crypto::AnalysePassphrase(lower_pass, strlen(lower_pass), &lower_checks);
+
+        bool passed = (mixed_result == SIGNET_PASSPHRASE_VALID) && mixed_checks.has_symbol &&
+                      (lower_result == SIGNET_PASSPHRASE_VALID) && lower_checks.has_symbol &&
+                      lower_checks.class_count == 3;
+        AddTestResult(results, "Crypto: Passphrase Validation (space is a symbol)",
+                      passed, passed ? "" : "Space (0x20) should count as a symbol");
+    }
+
+    // Test 6b: V1.18 Symbols class - the five characters added in V1.18 (Section 7.2.3)
+    {
+        // Each passphrase is lower + digit + one of: " \ ` ~ and space.
+        static const char* const added_symbol_pass[] = {
+            "lantern\"px5", "lantern\\px5", "lantern`px5", "lantern~px5", "lantern px5"
+        };
+        static const int ADDED_SYMBOL_COUNT = sizeof(added_symbol_pass) / sizeof(added_symbol_pass[0]);
+        bool passed = true;
+        for (int i = 0; i < ADDED_SYMBOL_COUNT; i++) {
+            Crypto::PassphraseChecks checks;
+            int32_t result = Crypto::AnalysePassphrase(added_symbol_pass[i], strlen(added_symbol_pass[i]), &checks);
+            if (result != SIGNET_PASSPHRASE_VALID || !checks.has_symbol) passed = false;
+        }
+        AddTestResult(results, "Crypto: Passphrase Validation (V1.18 added symbols)",
+                      passed, passed ? "" : "A V1.18 symbol was not counted as a symbol");
+    }
+
+    // Test 6c: V1.18 character set - bytes outside 0x20 to 0x7E are rejected (Section 7.2.3)
+    {
+        const char tab_pass[]  = "Lantern\tPX5";               // control character at index 7
+        const char high_pass[] = "Lantern\xA3PX5";             // 0xA3 (pound sign in Windows-1252) at index 7
+        const char nul_pass[]  = { 'L','a','n','t','e','r','n','\0','P','X','5' }; // embedded NUL at index 7
+        static const uint32_t BAD_CHAR_INDEX = 7;
+        Crypto::PassphraseChecks tab_checks, high_checks, nul_checks;
+        int32_t tab_result  = Crypto::AnalysePassphrase(tab_pass,  strlen(tab_pass),  &tab_checks);
+        int32_t high_result = Crypto::AnalysePassphrase(high_pass, strlen(high_pass), &high_checks);
+        int32_t nul_result  = Crypto::AnalysePassphrase(nul_pass,  sizeof(nul_pass),  &nul_checks);
+
+        bool passed = (tab_result  == SIGNET_PASSPHRASE_INVALID_CHARACTER) && !tab_checks.chars_ok  && tab_checks.bad_char_index  == BAD_CHAR_INDEX &&
+                      (high_result == SIGNET_PASSPHRASE_INVALID_CHARACTER) && !high_checks.chars_ok && high_checks.bad_char_index == BAD_CHAR_INDEX &&
+                      (nul_result  == SIGNET_PASSPHRASE_INVALID_CHARACTER) && !nul_checks.chars_ok  && nul_checks.bad_char_index  == BAD_CHAR_INDEX;
+        AddTestResult(results, "Crypto: Passphrase Validation (non-printable rejected)",
+                      passed, passed ? "" : "A byte outside 0x20-0x7E should be rejected");
+    }
+
+    // Test 6d: Generated TUIDs are Type 2 Dynamic (Section 6.6, V1.21): the
+    // Manufacturer field is the ESTA ID ORed with 0x8000 and bit 31 of the Device
+    // ID is clear. 0x534C has bit 14 set, so this also proves nothing but bit 15
+    // is changed (0x534C -> 0xD34C) and the ESTA ID decodes back exactly.
+    // Several runs so a generator that left bit 31 random would almost certainly be caught.
+    {
+        static const int TUID_GEN_RUNS = 32;
+        static const uint16_t TEST_MFG_CODE = 0x534C;          // Singularity ESTA manufacturer code
+        static const uint16_t TEST_MFG_FIELD = 0xD34C;         // 0x534C | 0x8000
+        bool passed = true;
+        for (int i = 0; i < TUID_GEN_RUNS && passed; i++) {
+            uint8_t tuid[TUID_LENGTH];
+            if (Crypto::TUID_GenerateEphemeral(TEST_MFG_CODE, tuid) != SIGNET_SUCCESS) { passed = false; break; }
+            const uint16_t mfg_field = static_cast<uint16_t>((tuid[0] << 8) | tuid[1]);
+            if (mfg_field != TEST_MFG_FIELD ||
+                (tuid[2] & 0x80) != 0 ||
+                Crypto::TUID_GetEstaManId(tuid) != TEST_MFG_CODE ||
+                !Crypto::TUID_IsType2Dynamic(tuid)) {
+                passed = false;
+            }
+        }
+        AddTestResult(results, "Identity: Generated TUID is Type 2 Dynamic",
+                      passed, passed ? "" : "Generated TUID is not ESTA ID | 0x8000 with Device ID bit 31 clear");
+    }
+
+    // Test 6e: TUID_GetType classifies every edge of the Section 6.6 (V1.21) table.
+    // Type 2 and Type 3 both allow a 31-bit payload of 0; only Type 1 excludes Device ID 0.
+    {
+        struct TuidCase { uint8_t tuid[TUID_LENGTH]; Crypto::TuidType expected; };
+        static const TuidCase cases[] = {
+            { { 0x00, 0x01, 0x00, 0x00, 0x00, 0x01 }, Crypto::TUID_TYPE1_STATIC },      // Type 1 min
+            { { 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE }, Crypto::TUID_TYPE1_STATIC },      // Type 1 max
+            { { 0x53, 0x4C, 0x80, 0x00, 0x00, 0x01 }, Crypto::TUID_TYPE1_STATIC },      // a V1.18 software TUID now reads as Type 1
+            { { 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 }, Crypto::TUID_TYPE_INVALID },      // Type 1 Device ID 0
+            { { 0x53, 0x4C, 0xFF, 0xFF, 0xFF, 0xFF }, Crypto::TUID_TYPE_INVALID },      // Type 1 Device ID all ones
+            { { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 }, Crypto::TUID_TYPE_INVALID },      // ESTA ID 0
+            { { 0x80, 0x01, 0x00, 0x00, 0x00, 0x00 }, Crypto::TUID_TYPE2_DYNAMIC },     // Type 2 min (payload 0)
+            { { 0xFF, 0xFE, 0x7F, 0xFF, 0xFF, 0xFE }, Crypto::TUID_TYPE2_DYNAMIC },     // Type 2 max
+            { { 0xD3, 0x4C, 0x7F, 0xFF, 0xFF, 0xFF }, Crypto::TUID_TYPE_INVALID },      // Type 2 payload all ones
+            { { 0x80, 0x01, 0x80, 0x00, 0x00, 0x00 }, Crypto::TUID_TYPE3_MAC_DERIVED }, // Type 3 min (payload 0)
+            { { 0xFF, 0xFE, 0xFF, 0xFF, 0xFF, 0xFE }, Crypto::TUID_TYPE3_MAC_DERIVED }, // Type 3 max
+            { { 0xD3, 0x4C, 0xFF, 0xFF, 0xFF, 0xFF }, Crypto::TUID_TYPE_INVALID },      // Type 3 payload all ones
+            { { 0x80, 0x00, 0x12, 0x34, 0x56, 0x78 }, Crypto::TUID_TYPE_INVALID },      // field 0x8000 (ESTA ID 0)
+            { { 0xFF, 0xFF, 0xFF, 0xF0, 0x00, 0x00 }, Crypto::TUID_TYPE_RESERVED },     // Reserved min
+            { { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE }, Crypto::TUID_TYPE_RESERVED },     // Reserved max
+            { { 0xFF, 0xFF, 0xFF, 0xEF, 0xFF, 0xFF }, Crypto::TUID_TYPE_INVALID },      // field 0xFFFF below Reserved
+            { { 0xFF, 0xFF, 0x12, 0x34, 0x56, 0x78 }, Crypto::TUID_TYPE_INVALID },      // field 0xFFFF Type 2 shape
+        };
+        static const int CASE_COUNT = static_cast<int>(sizeof(cases) / sizeof(cases[0]));
+        int failed_case = -1;
+        for (int i = 0; i < CASE_COUNT; i++) {
+            if (Crypto::TUID_GetType(cases[i].tuid) != cases[i].expected) { failed_case = i; break; }
+        }
+        static const int TUID_CASE_MSG_LEN = 96;
+        char msg[TUID_CASE_MSG_LEN] = "";
+        if (failed_case >= 0) {
+            const uint8_t* t = cases[failed_case].tuid;
+            snprintf(msg, sizeof(msg), "%02X%02X:%02X%02X%02X%02X classified as %s",
+                     t[0], t[1], t[2], t[3], t[4], t[5], Crypto::TUID_TypeName(Crypto::TUID_GetType(t)));
+        }
+        AddTestResult(results, "Identity: TUID type table edges", failed_case < 0, msg);
+    }
+
+    // Test 6f: the Type 2 builder rejects what the generator must redraw or refuse,
+    // and the ESTA ID decodes back from a Type 3 field.
+    {
+        uint8_t tuid[TUID_LENGTH];
+        static const uint8_t type3_tuid[TUID_LENGTH] = { 0xD3, 0x4C, 0x85, 0x12, 0x34, 0x56 };
+        bool passed = Crypto::TUID_BuildType2Dynamic(0x534C, DEVICE_ID_PAYLOAD_MASK, tuid) == SIGNET_ERROR_INVALID_ARG &&  // all ones
+                      Crypto::TUID_BuildType2Dynamic(0x534C, 0xFFFFFFFFUL, tuid) == SIGNET_ERROR_INVALID_ARG &&           // all ones after bit 31 is cleared
+                      Crypto::TUID_BuildType2Dynamic(0x0000, 0, tuid) == SIGNET_ERROR_INVALID_ARG &&                      // ESTA ID 0
+                      Crypto::TUID_BuildType2Dynamic(0x7FFF, 0, tuid) == SIGNET_ERROR_INVALID_ARG &&                      // field would be 0xFFFF
+                      Crypto::TUID_BuildType2Dynamic(0x534C, 0x80000000UL, tuid) == SIGNET_SUCCESS &&                     // bit 31 is cleared, payload 0
+                      tuid[0] == 0xD3 && tuid[1] == 0x4C && tuid[2] == 0x00 && tuid[5] == 0x00 &&
+                      Crypto::TUID_GetEstaManId(type3_tuid) == 0x534C;
+        AddTestResult(results, "Identity: Type 2 builder limits and ESTA ID decode",
+                      passed, passed ? "" : "TUID_BuildType2Dynamic or TUID_GetEstaManId gave a wrong result");
+    }
+
     // Test 7: Random Passphrase Generation
     {
         char passphrase1[65];

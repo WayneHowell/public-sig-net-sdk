@@ -20,7 +20,7 @@ struct SupportedTidEntry {
 static const int PROFILE_SUPPORTED_TID_COUNT = 22;
 
 // Core protocol TIDs handled by the protocol engine (not the per-TID profile
-// table). SNAC 1007 requires them to be advertised in the SUPPORTED_TIDS array.
+// table). Section 11.6.1 requires them to be advertised in the SUPPORTED_TIDS array.
 static const int PROFILE_CORE_TID_COUNT = 4;
 static const int PROFILE_ADVERTISED_TID_COUNT = PROFILE_SUPPORTED_TID_COUNT + PROFILE_CORE_TID_COUNT;
 
@@ -98,9 +98,8 @@ static const uint8_t MULT_OVERRIDE_OCTET_MAX      = 0xEF;  // Highest valid mult
 static const uint16_t MULT_OVERRIDE_LENGTH        = 4;     // IPv4 address
 static const uint16_t TEXT_TID_MAX_LENGTH         = 65;    // 1 encoding byte + 64 text bytes
 
-// Strict SET payload validation (spec 10.4 / SNAC 1251,1261,1451,1461,3651,3751,
-// 4151,4451,4551): a SET carrying an out-of-range value or a wrong/oversized
-// length must be silently ignored. Returns true only when the payload is a
+// Strict SET payload validation (spec Section 10.4.2): a SET carrying an
+// out-of-range value or a wrong/oversized length must be silently ignored. Returns true only when the payload is a
 // well-formed, in-range value for the given TID. TIDs not listed here fall
 // through to the caller's blob-capacity / read-only handling.
 inline bool IsValidSetPayload(uint16_t tid, const uint8_t* value, uint16_t length)
@@ -181,7 +180,7 @@ static const uint8_t DEFAULT_ROOT_PROTOCOL_VERSION[1] = { 0x01 };
 
 static const char* DEFAULT_ROOT_DEVICE_LABEL = "Sig-Net Node";
 static const char* DEFAULT_ROOT_MODEL_NAME = "Fogmaster 5000";
-static const char* DEFAULT_ROOT_FIRMWARE_STRING = "v1.08 Spec";
+static const char* DEFAULT_ROOT_FIRMWARE_STRING = "v1.21 Spec";
 
 static const char* DEFAULT_EP1_LABEL = "EP1";
 static const uint8_t DEFAULT_EP1_MULT_OVERRIDE[4] = { 0x00, 0x00, 0x00, 0x00 };

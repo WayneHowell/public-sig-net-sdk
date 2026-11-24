@@ -48,3 +48,7 @@ build.log
 !sig-net-example-tid-level-tx/Win32/Debug/
 sig-net-example-tid-level-tx/Win32/Debug/*
 !sig-net-example-tid-level-tx/Win32/Debug/*.exe
+
+# C++Builder IDE desktop state (holds local file paths)
+*.dsk
+*.~dsk

@@ -143,20 +143,65 @@ int32_t TUID_FromHexString(
     uint8_t* tuid                // Output: 6-byte TUID
 );
 
-// Generate an ephemeral TUID for software applications (Spec Section 6.6)
-// Combines the given manufacturer code with a CSPRNG-generated Device ID in
-// the ephemeral range 0x80000000–0xFFFFFFEF (MSB=1, reserved top 16 excluded).
-// Uses Windows BCrypt as the CSPRNG source.
+// TUID types of spec Section 6.6 (V1.21). See the partition table beside
+// TUID_MFG_NOT_FACTORY in sig-net-constants.hpp.
+enum TuidType {
+    TUID_TYPE_INVALID = 0,       // Outside every range of the Section 6.6 table
+    TUID_TYPE1_STATIC,           // Factory hardware: Manufacturer field is the ESTA ID
+    TUID_TYPE2_DYNAMIC,          // Software: ESTA ID | 0x8000, 31 random Device ID bits
+    TUID_TYPE3_MAC_DERIVED,      // Field-upgraded hardware: ESTA ID | 0x8000, OUI index + MAC
+    TUID_TYPE_RESERVED           // 0xFFFF:FFF00000 to 0xFFFF:FFFFFFFE
+};
+
+// Generate a TUID for software applications (Spec Section 6.6, V1.21 Type 2
+// Dynamic). The Manufacturer field is the ESTA Manufacturer ID ORed with
+// 0x8000 and the Device ID is 31 bits from the CSPRNG (Windows BCrypt), bit 31
+// clear. An all-ones payload (0x7FFFFFFF, outside the range) is redrawn.
 //
 // Parameters:
-//   mfg_code  - 16-bit ESTA Manufacturer ID (e.g. 0x5379 for Singularity)
-//   tuid_out  - Output: 6-byte TUID (caller must provide 6 bytes)
+//   esta_man_id - 16-bit ESTA Manufacturer ID, not ORed (e.g. 0x534C for
+//                 Singularity); must be 0x0001 to 0x7FFE (0x7FFF would give the
+//                 Reserved field 0xFFFF)
+//   tuid_out    - Output: 6-byte TUID (caller must provide 6 bytes)
 //
-// Returns SIGNET_SUCCESS on success, SIGNET_ERROR_CRYPTO on CSPRNG failure.
+// Returns SIGNET_SUCCESS on success, SIGNET_ERROR_CRYPTO on CSPRNG failure,
+// SIGNET_ERROR_INVALID_ARG for a bad esta_man_id.
 int32_t TUID_GenerateEphemeral(
-    uint16_t mfg_code,
+    uint16_t esta_man_id,
     uint8_t* tuid_out
 );
+
+// Builds a Type 2 Dynamic TUID from esta_man_id and the low 31 bits of
+// random_bits. The one place the Type 2 bit layout is written; a caller with
+// its own random source (a CSPRNG-failure fallback) uses this.
+// SIGNET_ERROR_INVALID_ARG when esta_man_id is outside 0x0001 to 0x7FFE, or the
+// payload is all ones (the caller draws again).
+int32_t TUID_BuildType2Dynamic(
+    uint16_t esta_man_id,        // Input: ESTA Manufacturer ID (not ORed)
+    uint32_t random_bits,        // Input: random value; bits 30-0 are used
+    uint8_t* tuid_out            // Output: 6-byte TUID
+);
+
+// Classifies a TUID against the Section 6.6 (V1.21) table.
+TuidType TUID_GetType(
+    const uint8_t* tuid          // Input: 6-byte TUID
+);
+
+// True when the TUID is a valid Type 2 Dynamic TUID (Section 6.6, V1.21).
+bool TUID_IsType2Dynamic(
+    const uint8_t* tuid          // Input: 6-byte TUID
+);
+
+// The ESTA Manufacturer ID a TUID carries: the Manufacturer field with the
+// Not-Factory bit 47 cleared (field & 0x7FFF). Exact for Types 1, 2 and 3.
+// Never read tuid[0..1] directly as a ManID: for Types 2 and 3 it is ORed.
+uint16_t TUID_GetEstaManId(
+    const uint8_t* tuid          // Input: 6-byte TUID
+);
+
+// Short name of a TUID type: "Type 1 Static", "Type 2 Dynamic",
+// "Type 3 MAC-Derived", "Reserved" or "Invalid".
+const char* TUID_TypeName(TuidType type);
 
 //------------------------------------------------------------------------------
 // Passphrase Validation (Section 7.2.3)
@@ -172,7 +217,7 @@ int32_t TUID_GenerateEphemeral(
 //   - No more than 3 consecutive sequential characters
 // 
 // Parameters:
-//   passphrase     - UTF-8 encoded passphrase string (null-terminated)
+//   passphrase     - Printable ASCII passphrase (0x20 to 0x7E, null-terminated)
 //   passphrase_len - Length of passphrase in bytes (without null terminator)
 // 
 // Returns:
@@ -182,9 +227,10 @@ int32_t TUID_GenerateEphemeral(
 //   SIGNET_PASSPHRASE_INSUFFICIENT_CLASSES (-12) if < 3 classes
 //   SIGNET_PASSPHRASE_CONSECUTIVE_IDENTICAL (-13) if > 2 identical in a row
 //   SIGNET_PASSPHRASE_CONSECUTIVE_SEQUENTIAL (-14) if > 3 sequential chars
+//   SIGNET_PASSPHRASE_INVALID_CHARACTER (-15) if any byte is outside 0x20-0x7E
 //------------------------------------------------------------------------------
 int32_t ValidatePassphrase(
-    const char* passphrase,      // Input: UTF-8 passphrase string
+    const char* passphrase,      // Input: printable ASCII passphrase (0x20 to 0x7E)
     uint32_t passphrase_len      // Length in bytes (without null terminator)
 );
 
@@ -198,7 +244,9 @@ struct PassphraseChecks {
     bool has_upper;          // At least one uppercase letter (A-Z)
     bool has_lower;          // At least one lowercase letter (a-z)
     bool has_digit;          // At least one digit (0-9)
-    bool has_symbol;         // At least one allowed symbol
+    bool has_symbol;         // At least one symbol: printable ASCII that is not a letter or digit, space included
+    bool chars_ok;           // true = every byte is printable ASCII (0x20 to 0x7E)
+    uint32_t bad_char_index; // Position of the first byte outside 0x20 to 0x7E (valid only when chars_ok is false)
     bool classes_ok;         // true = class_count >= 3
     bool no_identical;       // true = no triple identical characters
     bool no_sequential;      // true = no 4-character sequential run
@@ -265,7 +313,7 @@ int32_t GetPassphraseValidationReport(
 // Output: 32 bytes (256 bits)
 // 
 // Parameters:
-//   passphrase     - UTF-8 encoded passphrase string (null-terminated)
+//   passphrase     - Printable ASCII passphrase (0x20 to 0x7E, null-terminated)
 //   passphrase_len - Length of passphrase in bytes (without null terminator)
 //   k0_output      - Buffer to receive 32-byte K0 root key
 // 

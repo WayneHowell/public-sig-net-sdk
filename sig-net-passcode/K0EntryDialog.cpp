@@ -36,6 +36,28 @@
 #include <stdio.h>
 #include <string.h>
 
+// DEL (0x7F) is outside the passphrase range 0x20 to 0x7E, so AnalysePassphrase
+// reports it as SIGNET_PASSPHRASE_INVALID_CHARACTER at the same position.
+static const char kPassphraseNotAscii = 0x7F;
+
+// Converts the edit box text to the passphrase bytes, one byte per character.
+// AnsiString() would turn a character outside the code page into '?', which is
+// itself a valid symbol, and would turn other non-ASCII characters into
+// code-page bytes that differ between machines. Any character outside 0x20 to
+// 0x7E becomes kPassphraseNotAscii instead, so it is always rejected
+// (Section 7.2.3, V1.18).
+static AnsiString PassphraseTextToAscii(const String& text)
+{
+    AnsiString out;
+    out.SetLength(text.Length());
+    for (int i = 1; i <= text.Length(); i++) {
+        const wchar_t c = text[i];
+        out[i] = (c >= SigNet::PASSPHRASE_CHAR_MIN && c <= SigNet::PASSPHRASE_CHAR_MAX)
+            ? static_cast<char>(c) : kPassphraseNotAscii;
+    }
+    return out;
+}
+
 static void SecureZeroBuffer(void* ptr, size_t len)
 {
     volatile unsigned char* p = static_cast<volatile unsigned char*>(ptr);
@@ -162,11 +184,11 @@ void TK0EntryDialog::UpdateValidationDisplay()
         return;
     }
 
-    AnsiString utf8Pass = AnsiString(passphrase);
+    AnsiString asciiPass = PassphraseTextToAscii(passphrase);
     SigNet::Crypto::PassphraseChecks checks;
     int32_t result = SigNet::Crypto::AnalysePassphrase(
-        utf8Pass.c_str(),
-        utf8Pass.Length(),
+        asciiPass.c_str(),
+        asciiPass.Length(),
         &checks
     );
 
@@ -207,8 +229,14 @@ void TK0EntryDialog::UpdatePassphraseCheckEdits(const SigNet::Crypto::Passphrase
         ch.has_lower ? "Yes" : "No",
         ch.has_digit ? "Yes" : "No",
         ch.has_symbol ? "Yes" : "No");
+    if (!ch.chars_ok) {
+        // Spec 7.2.3: a specific message for the rule that failed. Shown on the
+        // classes line, which is where the character set is described.
+        sprintf(buf, "FAIL: character %u is not allowed (printable ASCII only: letters, digits, space and ! \" # $ %% & ' ( ) * + , - . / : ; < = > ? @ [ \\ ] ^ _ ` { | } ~)",
+            (unsigned)(ch.bad_char_index + 1));
+    }
     EditCheckClasses->Caption = String(buf);
-    EditCheckClasses->Font->Color = ch.classes_ok ? clGreen : clRed;
+    EditCheckClasses->Font->Color = (ch.classes_ok && ch.chars_ok) ? clGreen : clRed;
     EditCheckClasses->Invalidate();
 
     EditCheckIdentical->Caption = ch.no_identical
@@ -281,11 +309,11 @@ void __fastcall TK0EntryDialog::ButtonPassphraseToK0Click(TObject *Sender)
         return;
     }
 
-    AnsiString utf8Pass = AnsiString(EditPassphrase->Text);
+    AnsiString asciiPass = PassphraseTextToAscii(EditPassphrase->Text);
     SigNet::Crypto::PassphraseChecks checks;
     int32_t validation_result = SigNet::Crypto::AnalysePassphrase(
-        utf8Pass.c_str(),
-        utf8Pass.Length(),
+        asciiPass.c_str(),
+        asciiPass.Length(),
         &checks
     );
 
@@ -299,8 +327,8 @@ void __fastcall TK0EntryDialog::ButtonPassphraseToK0Click(TObject *Sender)
     }
 
     int32_t result = SigNet::Crypto::DeriveK0FromPassphrase(
-        utf8Pass.c_str(),
-        utf8Pass.Length(),
+        asciiPass.c_str(),
+        asciiPass.Length(),
         CurrentK0
     );
 

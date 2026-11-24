@@ -228,6 +228,29 @@ static const uint32_t DERIVED_KEY_LENGTH    = 32;    // All derived keys are 256
 static const uint32_t HMAC_SHA256_LENGTH    = 32;    // HMAC-SHA256 digest length (bytes)
 static const uint32_t TUID_LENGTH           = 6;     // TUID is 6 bytes (48-bit)
 static const uint32_t TUID_HEX_LENGTH       = 12;    // TUID hex chars (without null terminator)
+// TUID partition (Section 6.6, V1.21). Bit 47 (top bit of the 16-bit Manufacturer field) is the
+// Not-Factory flag; bit 31 (top bit of the 32-bit Device ID) is the Type identifier.
+//   Type                Bit 47  Bit 31  Manufacturer field  Device ID
+//   Type 1 Static         0      n/a    0x0001-0x7FFF       0x00000001-0xFFFFFFFE  factory hardware (= its RDM UID)
+//   Type 2 Dynamic        1      0      0x8001-0xFFFE       0x00000000-0x7FFFFFFE  software, CSPRNG
+//   Type 3 MAC-Derived    1      1      0x8001-0xFFFE       0x80000000-0xFFFFFFFE  OUI index bits 30-24, MAC low 24 bits
+//   Reserved              1      1      0xFFFF              0xFFF00000-0xFFFFFFFE
+// Type 2 and 3 Manufacturer field = ESTA ID ORed with 0x8000, so the ESTA ID is always field & 0x7FFF.
+// Type 2 and 3 share a 31-bit payload (bits 30-0) of 0x00000000-0x7FFFFFFE: all-ones is excluded.
+static const uint16_t TUID_MFG_NOT_FACTORY      = 0x8000;       // Bit 47: set for Type 2, Type 3 and Reserved
+static const uint16_t TUID_MFG_ESTA_MASK        = 0x7FFF;       // ESTA Manufacturer ID bits of the Manufacturer field
+static const uint16_t TUID_MFG_ESTA_MIN         = 0x0001;       // Lowest ESTA ID a TUID may carry
+static const uint16_t TUID_MFG_NOT_FACTORY_MAX  = 0xFFFE;       // Highest Type 2/3 Manufacturer field (ESTA 0x7FFE)
+static const uint16_t TUID_MFG_RESERVED         = 0xFFFF;       // Manufacturer field of the Reserved block
+static const uint32_t DEVICE_ID_TYPE3_FLAG      = 0x80000000UL; // Bit 31: Type 3 when bit 47 is set
+static const uint32_t DEVICE_ID_PAYLOAD_MASK    = 0x7FFFFFFFUL; // Bits 30-0: random (Type 2), OUI index + MAC (Type 3)
+static const uint32_t DEVICE_ID_TYPE1_MIN       = 0x00000001UL; // Type 1 Device ID 0 is excluded
+static const uint32_t DEVICE_ID_TYPE1_MAX       = 0xFFFFFFFEUL; // Type 1 Device ID 0xFFFFFFFF is excluded
+static const uint32_t DEVICE_ID_RESERVED_MIN    = 0xFFF00000UL; // Reserved block Device IDs (Manufacturer field 0xFFFF)
+static const uint32_t DEVICE_ID_RESERVED_MAX    = 0xFFFFFFFEUL;
+static const uint32_t DEVICE_ID_TYPE3_OUI_SHIFT = 24;           // Type 3 OUI index position (bits 30-24)
+static const uint32_t DEVICE_ID_TYPE3_OUI_MASK  = 0x7F;         // 7-bit OUI index (128 manufacturer OUIs)
+static const uint32_t DEVICE_ID_TYPE3_MAC_MASK  = 0x00FFFFFFUL; // Type 3 lower 24 bits of the MAC address
 static const uint32_t ENDPOINT_LENGTH       = 2;     // Endpoint is 2 bytes (16-bit)
 static const uint32_t SENDER_ID_LENGTH      = 8;     // Sender-ID = TUID + Endpoint (bytes)
 static const uint32_t HKDF_INFO_INPUT_MAX   = 63;    // info bytes before HKDF counter byte
@@ -292,6 +315,7 @@ static const int32_t SIGNET_PASSPHRASE_TOO_LONG                 = -11; // Length
 static const int32_t SIGNET_PASSPHRASE_INSUFFICIENT_CLASSES     = -12; // < 3 character classes used
 static const int32_t SIGNET_PASSPHRASE_CONSECUTIVE_IDENTICAL    = -13; // > 2 consecutive identical chars
 static const int32_t SIGNET_PASSPHRASE_CONSECUTIVE_SEQUENTIAL   = -14; // > 3 consecutive sequential chars
+static const int32_t SIGNET_PASSPHRASE_INVALID_CHARACTER        = -15; // A byte outside printable ASCII 0x20-0x7E (V1.18)
 
 //------------------------------------------------------------------------------
 // Passphrase to K0 Derivation Parameters (Section 7.2.3)
@@ -305,7 +329,10 @@ static const uint32_t PASSPHRASE_MAX_LENGTH = 64;       // Maximum passphrase le
 static const uint32_t PASSPHRASE_GENERATED_LENGTH = 10; // Generated passphrase length
 
 // Passphrase character sets (shared between validation and generator)
-static const char* PASSPHRASE_SYMBOLS = "!@#$%^&*()-_=+[]{}|;:',.<>?/";  // Allowed symbols for validation
+// Passphrases are printable ASCII, 0x20 to 0x7E (Section 7.2.3, V1.18). The Symbols class is every
+// character in that range that is not a letter or a digit (33 characters, space included).
+static const uint8_t PASSPHRASE_CHAR_MIN = 0x20;   // Space: lowest allowed passphrase character
+static const uint8_t PASSPHRASE_CHAR_MAX = 0x7E;   // Tilde: highest allowed passphrase character
 static const char* PASSPHRASE_GEN_UPPERCASE = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // Removed I, O for clarity
 static const char* PASSPHRASE_GEN_LOWERCASE = "abcdefghjkmnpqrstuvwxyz";  // Removed i, l, o for clarity
 static const char* PASSPHRASE_GEN_DIGITS = "23456789";                     // Removed 0, 1 for clarity

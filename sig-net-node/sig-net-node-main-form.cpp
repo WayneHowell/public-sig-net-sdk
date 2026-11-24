@@ -51,7 +51,7 @@
 TFormSigNetNode *FormSigNetNode;
 
 #define APP_VERSION_MAJOR 0
-#define APP_VERSION_MINOR 7
+#define APP_VERSION_MINOR 8
 #define APP_VERSION_ID ((APP_VERSION_MAJOR << 8) | APP_VERSION_MINOR)
 
 // SET application results (spec 10.4.x transaction paths).
@@ -164,12 +164,9 @@ void __fastcall TFormSigNetNode::FormCreate(TObject *Sender)
         const uint16_t mfg_code = static_cast<uint16_t>((SigNet::SoemCodeSdkNode >> 16) & 0xFFFF);
         int32_t tuid_result = SigNet::Crypto::TUID_GenerateEphemeral(mfg_code, tuid);
         if (tuid_result != SigNet::SIGNET_SUCCESS) {
-            tuid[0] = static_cast<uint8_t>((mfg_code >> 8) & 0xFF);
-            tuid[1] = static_cast<uint8_t>(mfg_code & 0xFF);
-            tuid[2] = 0x80;
-            tuid[3] = 0x00;
-            tuid[4] = 0x00;
-            tuid[5] = 0x00;
+            // CSPRNG failed: a fixed Type 2 Dynamic TUID (Device ID 0, Section 6.6 V1.21)
+            // so the tool still starts. Never hand-build the bytes: the layout lives in the library.
+            SigNet::Crypto::TUID_BuildType2Dynamic(mfg_code, 0, tuid);
         }
         String tuid_text;
         tuid_text.sprintf(L"0x%02x%02x%02x%02x%02x%02x",

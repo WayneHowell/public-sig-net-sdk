@@ -116,8 +116,8 @@
 
 namespace SigNet {
 
-static const char* LIBRARY_VERSION = "0.3";
-static const char* PROTOCOL_VERSION = "0.15";
+static const char* LIBRARY_VERSION = "0.8";    // The SDK release version (the tools' APP_VERSION)
+static const char* PROTOCOL_VERSION = "1.21";  // The Sig-Net spec version this release implements
 
 // Get library version string
 inline const char* GetLibraryVersion() {
@@ -142,7 +142,8 @@ enum PassphraseResult {
     PASSPHRASE_TOO_LONG           = -11, // Length > 64 characters
     PASSPHRASE_INSUFFICIENT_CLASS = -12, // Fewer than 3 of 4 classes (U/L/D/S) present
     PASSPHRASE_CONSECUTIVE_SAME   = -13, // 3+ consecutive identical characters (e.g., "aaa")
-    PASSPHRASE_CONSECUTIVE_SEQ    = -14  // 4+ consecutive sequential characters (e.g., "abcd", "1234")
+    PASSPHRASE_CONSECUTIVE_SEQ    = -14, // 4+ consecutive sequential characters (e.g., "abcd", "1234")
+    PASSPHRASE_INVALID_CHAR       = -15  // A byte outside printable ASCII 0x20-0x7E (V1.18)
 };
 
 
