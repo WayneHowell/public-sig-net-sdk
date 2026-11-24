@@ -23,6 +23,7 @@
 
 # IDE/user-local project files
 *.cbproj.local
+*.groupproj.local
 
 # RAD Studio local history folders
 **/__history/

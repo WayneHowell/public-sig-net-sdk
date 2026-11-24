@@ -1,0 +1,60 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{6E2B9C47-3A1D-4F85-B0C2-8D7E5A913F64}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="sig-net-node\sig-net-node.cbproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="sig-net-poller\sig-net-poller.cbproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="sig-net-tid-level-tx\sig-net-tid-level-tx.cbproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="sig-net-node">
+        <MSBuild Projects="sig-net-node\sig-net-node.cbproj"/>
+    </Target>
+    <Target Name="sig-net-node:Clean">
+        <MSBuild Projects="sig-net-node\sig-net-node.cbproj" Targets="Clean"/>
+    </Target>
+    <Target Name="sig-net-node:Make">
+        <MSBuild Projects="sig-net-node\sig-net-node.cbproj" Targets="Make"/>
+    </Target>
+    <Target Name="sig-net-poller">
+        <MSBuild Projects="sig-net-poller\sig-net-poller.cbproj"/>
+    </Target>
+    <Target Name="sig-net-poller:Clean">
+        <MSBuild Projects="sig-net-poller\sig-net-poller.cbproj" Targets="Clean"/>
+    </Target>
+    <Target Name="sig-net-poller:Make">
+        <MSBuild Projects="sig-net-poller\sig-net-poller.cbproj" Targets="Make"/>
+    </Target>
+    <Target Name="sig-net-tid-level-tx">
+        <MSBuild Projects="sig-net-tid-level-tx\sig-net-tid-level-tx.cbproj"/>
+    </Target>
+    <Target Name="sig-net-tid-level-tx:Clean">
+        <MSBuild Projects="sig-net-tid-level-tx\sig-net-tid-level-tx.cbproj" Targets="Clean"/>
+    </Target>
+    <Target Name="sig-net-tid-level-tx:Make">
+        <MSBuild Projects="sig-net-tid-level-tx\sig-net-tid-level-tx.cbproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="sig-net-node;sig-net-poller;sig-net-tid-level-tx"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="sig-net-node:Clean;sig-net-poller:Clean;sig-net-tid-level-tx:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="sig-net-node:Make;sig-net-poller:Make;sig-net-tid-level-tx:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>
